@@ -18,7 +18,7 @@ jobs:
       with:
         python-version: '3.10'
 
-    # यहाँ हमने सभी पुराने conflicting पाथ्स को साफ़ कर दिया है ताकि कोई टकराव न हो
+    # पुराने conflicting पाथ्स को साफ़ करना ताकि Buildozer और NDK में टकराव न हो
     - name: Clean Conflicting Runner Environment
       run: |
         echo "Clearing pre-installed GitHub runner Android paths..."
@@ -60,7 +60,7 @@ jobs:
         img = Image.new('RGB', (512, 512), color=(15, 30, 15))
         d = ImageDraw.Draw(img)
         d.rectangle([100, 100, 412, 412], fill=(40, 180, 40))
-        d.text((160, 230), 'ZOMBIE Z', fill=(255, 255, 255))
+        d.text((140, 230), 'ZOMBIE Z', fill=(255, 255, 255))
         img.save('icon.png')
         print('[SUCCESS] Icon generated!')
         "
@@ -69,7 +69,7 @@ jobs:
       run: |
         cat << 'EOF' > buildozer.spec
         [app]
-        title = Zombie Z
+        title = Zombie Z Elite
         package.name = zombiez
         package.domain = org.zombie.zgame
         
@@ -78,7 +78,7 @@ jobs:
         source.include_patterns = icon.png
         icon.filename = icon.png
         
-        version = 0.1
+        version = 1.0
         
         requirements = python3,pygame,pillow
         orientation = landscape
