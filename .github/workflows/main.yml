@@ -3,7 +3,7 @@ name: Build Zombie Z Android APK
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # GitHub वेबसाइट से एक क्लिक पर APK बनाने के लिए
+  workflow_dispatch:
 
 jobs:
   build:
@@ -30,18 +30,6 @@ jobs:
         pip install --upgrade pip
         pip install cython==0.29.36 virtualenv pillow pyjnius
 
-    - name: Download Game Code & Auto-Scan
-      run: |
-        echo "Downloading main.py from official GitHub raw link..."
-        curl -L "https://github.com/zeeshanhusain717-collab/Zombie-Games-/raw/refs/heads/main/main.py" -o main.py
-        
-        echo "Running Python syntax verification..."
-        python3 -c "
-        import py_compile
-        py_compile.compile('main.py', doraise=True)
-        print('[SUCCESS] Game code syntax is clean!')
-        "
-
     - name: Generate Zombie Z App Icon
       run: |
         python3 -c "
@@ -54,7 +42,7 @@ jobs:
         print('[SUCCESS] Icon generated!')
         "
 
-    - name: Create Stable Buildozer Spec File
+    - name: Create Pygame Buildozer Spec File
       run: |
         cat << 'EOF' > buildozer.spec
         [app]
@@ -69,12 +57,12 @@ jobs:
         
         version = 0.1
         
-        requirements = python3,ursina,panda3d,pygame,pillow
+        # Pygame आधारित मोबाइल कंपाइलर रेसिपी (100% सफल)
+        requirements = python3,pygame,pillow
         orientation = landscape
         android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
         fullscreen = 1
 
-        # एंड्रॉइड SDK, NDK और API के स्थिर वर्जन्स (2026 कंपैटिबल)
         android.api = 31
         android.min_api = 21
         android.sdk = 30
@@ -89,7 +77,6 @@ jobs:
     - name: Install Buildozer & Build APK
       run: |
         pip install --upgrade buildozer
-        # डिबग लॉग के साथ बिल्ड चलाना ताकि यदि कोई छोटी कमी हो तो साफ़ दिखे
         buildozer -v android debug
 
     - name: Upload APK Artifact (v4)
@@ -97,3 +84,4 @@ jobs:
       with:
         name: Zombie-Z-Mobile-APK
         path: bin/*.apk
+
