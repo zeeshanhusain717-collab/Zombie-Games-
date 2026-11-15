@@ -126,7 +126,7 @@ class Player:
     def dash(self):
         if selected_character == "Nova" and self.dash_cooldown <= 0:
             self.speed = 14.0
-            self.dash_cooldown = 120  frames cooldown
+            self.dash_cooldown = 120  # Fixed syntax error cleanly
             popups.append(DamagePopup(self.x, self.y - 30, "SPEED DASH!", CYAN))
 
     def move(self, dx, dy):
@@ -260,7 +260,7 @@ def shoot_nearest_zombie():
     for g_idx in equipped_guns:
         g = guns_data[g_idx]
         lvl = gun_levels[g["name"]]
-        total_gun_dmg += g["base_dmg"] * (1 + (lvl - 1) * 0.5) # Level doubles/scales effectively up to 10x
+        total_gun_dmg += g["base_dmg"] * (1 + (lvl - 1) * 0.5)
     
     if selected_character == "Viper":
         total_gun_dmg = int(total_gun_dmg * 1.3)
@@ -318,7 +318,6 @@ def run_game():
     global unlocked_maps, selected_map, joy_active, joy_knob, armor_level, armor_shield, equipped_guns
     running = True
 
-    # UI Rects
     camp_start_btn = pygame.Rect(WIDTH // 2 - 220, HEIGHT - 130, 440, 65)
     claim_btn_rect = pygame.Rect(WIDTH // 2 - 220, HEIGHT - 210, 440, 50)
     
@@ -353,14 +352,13 @@ def run_game():
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mx, my = event.pos
                     if camp_start_btn.collidepoint(mx, my):
-                        game_state = 2  # Go to Loadout & Select
+                        game_state = 2
                     elif claim_btn_rect.collidepoint(mx, my):
                         if not mission_claimed and zombies_killed_today >= daily_target_zombies:
                             player_coins += 350
                             mission_claimed = True
                             status_msg = "Mission Reward Claimed (+350 🪙)!"
                     elif pygame.Rect(50, 200, 340, 50).collidepoint(mx, my):
-                        # Upgrade Armor Jacket (Level 1 to 10)
                         cost = armor_level * 100
                         if armor_level < 10 and player_coins >= cost:
                             player_coins -= cost
@@ -368,7 +366,6 @@ def run_game():
                             armor_shield = armor_level * 50
                             status_msg = f"Armor upgraded to Level {armor_level}!"
                     elif pygame.Rect(50, 260, 340, 50).collidepoint(mx, my):
-                        # Upgrade Character Level (1 to 10)
                         c_lvl = char_levels[selected_character]
                         cost = c_lvl * 150
                         if c_lvl < 10 and player_coins >= cost:
@@ -376,7 +373,6 @@ def run_game():
                             char_levels[selected_character] += 1
                             status_msg = f"{selected_character} upgraded to Level {char_levels[selected_character]}!"
                     elif pygame.Rect(50, 320, 340, 50).collidepoint(mx, my):
-                        # Upgrade Equipped Guns (Level 1 to 10)
                         g_name = guns_data[equipped_guns[0]]["name"]
                         g_lvl = gun_levels[g_name]
                         cost = g_lvl * 120
@@ -407,10 +403,8 @@ def run_game():
                     elif viper_rect.collidepoint(mx, my):
                         selected_character = "Viper"
                     elif pygame.Rect(WIDTH - 380, 370, 160, 40).collidepoint(mx, my):
-                        # Cycle gun 1 loadout
                         equipped_guns[0] = (equipped_guns[0] + 1) % len(guns_data)
                     elif pygame.Rect(WIDTH - 200, 370, 160, 40).collidepoint(mx, my):
-                        # Cycle gun 2 loadout
                         equipped_guns[1] = (equipped_guns[1] + 1) % len(guns_data)
                     elif start_battle_btn.collidepoint(mx, my):
                         start_game()
@@ -486,7 +480,6 @@ def run_game():
             title = font_large.render(f"CYCLE {cycle_count} | DAY {current_day} / {max_days}", True, GOLD)
             screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 20))
 
-            # Psychological Diary Quote
             quotes = [
                 "Diary: 'The fog whispers of an endless war. Stay armed.'",
                 "Diary: 'Armor saves flesh, but discipline saves the soul.'",
@@ -498,28 +491,23 @@ def run_game():
             coins_txt = font_med.render(f"Coins: {player_coins} 🪙", True, YELLOW)
             screen.blit(coins_txt, (50, 110))
 
-            # Upgrades UI
             shop_title = font_med.render("ARMORY & GEAR UPGRADES (Lv 1-10)", True, CYAN)
             screen.blit(shop_title, (50, 160))
 
-            # Jacket Armor Upgrade Button (Color changes with level)
             armor_colors = {1: GRAY, 2: GREEN, 3: BLUE, 4: CYAN, 5: PURPLE, 6: ORANGE, 7: GOLD, 8: RED, 9: PINK, 10: WHITE}
             j_col = armor_colors.get(armor_level, GRAY)
             pygame.draw.rect(screen, j_col, (50, 200, 340, 50), border_radius=10)
             screen.blit(font_small.render(f"Jacket Armor [Lv {armor_level}/10] Cost: {armor_level*100}", True, BLACK if armor_level==10 else WHITE), (65, 215))
 
-            # Character Upgrade Button
             c_lvl = char_levels[selected_character]
             pygame.draw.rect(screen, BLUE, (50, 260, 340, 50), border_radius=10)
             screen.blit(font_small.render(f"{selected_character} [Lv {c_lvl}/10] Cost: {c_lvl*150}", True, WHITE), (65, 275))
 
-            # Gun Upgrade Button
             g_name = guns_data[equipped_guns[0]]["name"]
             g_lvl = gun_levels[g_name]
             pygame.draw.rect(screen, BLUE, (50, 320, 340, 50), border_radius=10)
             screen.blit(font_small.render(f"{g_name} [Lv {g_lvl}/10] Cost: {g_lvl*120}", True, WHITE), (65, 335))
 
-            # Daily Mission Box
             mission_box = pygame.Rect(WIDTH - 500, 160, 420, 220)
             pygame.draw.rect(screen, (40, 40, 50), mission_box, border_radius=15)
             pygame.draw.rect(screen, ORANGE, mission_box, 2, border_radius=15)
@@ -548,7 +536,6 @@ def run_game():
             title = font_large.render("LOADOUT & MAP SELECTION", True, YELLOW)
             screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 40))
 
-            # Maps
             pygame.draw.rect(screen, GREEN if selected_map=="Jungle" else GRAY, jungle_rect, border_radius=8)
             screen.blit(font_small.render("Map: Jungle (Unlocked)", True, WHITE), (jungle_rect.x+15, jungle_rect.y+15))
 
@@ -562,7 +549,6 @@ def run_game():
             m_txt = "Ruined Metropolis (Unlocked)" if "Ruined Metropolis" in unlocked_maps else "Metropolis (Locked @ Day 25)"
             screen.blit(font_small.render(m_txt, True, WHITE), (metro_rect.x+15, metro_rect.y+15))
 
-            # Characters: Nova (Lady), Alpha (Gent 1), Viper (Gent 2)
             pygame.draw.rect(screen, PINK if selected_character=="Nova" else GRAY, nova_rect, border_radius=8)
             screen.blit(font_small.render("Nova (Lady) - Super Speed Dash", True, WHITE), (nova_rect.x+15, nova_rect.y+12))
 
@@ -572,7 +558,6 @@ def run_game():
             pygame.draw.rect(screen, GOLD if selected_character=="Viper" else GRAY, viper_rect, border_radius=8)
             screen.blit(font_small.render("Viper (Gent 2) - Deadly Gun Dmg", True, WHITE), (viper_rect.x+15, viper_rect.y+12))
 
-            # Gun Loadout Selection (Choose 2 guns from 6)
             gun_loadout_title = font_med.render("DUAL GUN LOADOUT (Pick 2)", True, CYAN)
             screen.blit(gun_loadout_title, (WIDTH - 380, 330))
 
@@ -629,7 +614,6 @@ def run_game():
                 if p.timer <= 0:
                     popups.remove(p)
 
-            # Render Map Themes
             if selected_map == "Jungle":
                 screen.fill((45, 130, 45))
                 pygame.draw.rect(screen, BLUE, (-cam_x + 1350, -cam_y, 180, 3000))
@@ -652,7 +636,6 @@ def run_game():
             for p in popups:
                 p.draw(screen, cam_x, cam_y)
 
-            # Touch Controls UI
             pygame.draw.circle(screen, (255, 255, 255), joy_base, joy_radius, 3)
             pygame.draw.circle(screen, CYAN, (int(joy_knob[0]), int(joy_knob[1])), 30)
 
@@ -661,7 +644,6 @@ def run_game():
             f_txt = font_med.render("FIRE", True, WHITE)
             screen.blit(f_txt, (fire_btn_rect.centerx - f_txt.get_width() // 2, fire_btn_rect.centery - f_txt.get_height() // 2))
 
-            # Nova Speed Dash Button if Nova is selected
             if selected_character == "Nova":
                 pygame.draw.rect(screen, CYAN, dash_btn_rect, border_radius=60)
                 pygame.draw.rect(screen, WHITE, dash_btn_rect, 3, border_radius=60)
@@ -673,7 +655,6 @@ def run_game():
             u_txt = font_small.render("UPGRADE", True, WHITE)
             screen.blit(u_txt, (upgrade_btn_rect.centerx - u_txt.get_width() // 2, upgrade_btn_rect.centery - u_txt.get_height() // 2))
 
-            # HUD Display
             hud_z = font_small.render(f"Zombies: {len(zombies)} | Coins: {player_coins}🪙", True, YELLOW)
             hud_hp = font_small.render(f"HP: {player_hp}/{max_player_hp} | Shield: {armor_shield}", True, CYAN)
             hud_time = font_small.render(f"Zone: {int(game_time // 60):02d}:{int(game_time % 60):02d}", True, WHITE)
@@ -700,3 +681,4 @@ def run_game():
 
 if __name__ == "__main__":
     run_game()
+
