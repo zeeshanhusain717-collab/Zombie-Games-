@@ -54,7 +54,7 @@ jobs:
         print('[SUCCESS] Icon generated!')
         "
 
-    - name: Create Buildozer Spec File (Fixed)
+    - name: Create Stable Buildozer Spec File
       run: |
         cat << 'EOF' > buildozer.spec
         [app]
@@ -62,7 +62,6 @@ jobs:
         package.name = zombiez
         package.domain = org.zombie.zgame
         
-        # यहाँ source.dir और version जोड़ दिया गया है ताकि पुराना एरर न आए
         source.dir = .
         source.include_exts = py,png,jpg,kv,atlas
         source.include_patterns = icon.png
@@ -74,6 +73,13 @@ jobs:
         orientation = landscape
         android.permissions = INTERNET
         fullscreen = 1
+
+        # एंड्रॉइड SDK और API के स्थिर वर्जन्स ताकि ऑटोमैटिक एरर न आए
+        android.api = 31
+        android.min_api = 21
+        android.sdk = 30
+        android.ndk = 23b
+        android.accept_sdk_license = True
 
         [buildozer]
         log_level = 2
@@ -90,4 +96,3 @@ jobs:
       with:
         name: Zombie-Z-Mobile-APK
         path: bin/*.apk
-
