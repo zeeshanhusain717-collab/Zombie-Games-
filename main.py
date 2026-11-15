@@ -1,414 +1,320 @@
-from ursina import *
+import pygame
 import random
+import math
 
-app = Ursina()
+# Initialize Pygame
+pygame.init()
+WIDTH, HEIGHT = 1280, 720
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Zombie Z - Mobile Edition")
+clock = pygame.time.Clock()
 
-# --- Game States ---
-# 0: Main Menu, 1: Map/Character Select, 2: Gameplay, 3: Game Over, 4: Win
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GREEN = (34, 139, 34)
+DARK_GREEN = (0, 100, 0)
+RED = (200, 50, 50)
+BLUE = (50, 50, 200)
+YELLOW = (220, 220, 50)
+CYAN = (0, 200, 200)
+BROWN = (139, 69, 19)
+GRAY = (100, 100, 100)
+DARK_GRAY = (40, 40, 40)
+
+# Fonts
+font_small = pygame.font.SysFont(None, 24)
+font_med = pygame.font.SysFont(None, 32)
+font_large = pygame.font.SysFont(None, 48)
+
+# Game States: 0: Menu, 1: Selection, 2: Gameplay, 3: Game Over, 4: Win
 game_state = 0
 
-# --- Global Variables ---
+# Global Variables
 selected_map = "Jungle"
 selected_character = "Commando"
 player_hp = 200
 max_player_hp = 200
 gun_damage = 50
 score = 0
-game_time = 600  # 10 minutes
+game_time = 600.0  # 10 minutes in seconds
 
-# UI entities list
-menu_entities = []
-game_entities = []
-
-window.title = "FREE FIRE: ZOMBIE SURVIVAL 3D"
-window.borderless = False
-window.fullscreen = False
-window.exit_button.enabled = False
-window.fps_counter.enabled = True
-
-# ==========================================================
-# 1. Menu System
-# ==========================================================
-
-def clear_menu():
-    for e in menu_entities:
-        destroy(e)
-    menu_entities.clear()
-
-def create_main_menu():
-    global game_state
-    game_state = 0
-    clear_menu()
-    
-    # Background UI Panel
-    menu_entities.append(Entity(model='quad', scale=(20, 20), color=color.dark_gray, z=1))
-    
-    # Title & Subtitle
-    menu_entities.append(Text('FREE FIRE: ZOMBIE SURVIVAL', origin=(0,0), y=0.35, scale=2, color=color.orange))
-    menu_entities.append(Text('Third-Person Mobile Edition', origin=(0,0), y=0.28, scale=1, color=color.light_gray))
-    
-    # Play Buttons
-    def start_selection():
-        create_selection_menu()
-        
-    menu_entities.append(Button(text='PLAY GAME', color=color.red, scale=(0.3, 0.1), y=0.05, on_click=start_selection))
-    menu_entities.append(Button(text='EXIT', color=color.gray, scale=(0.3, 0.1), y=-0.1, on_click=application.quit))
-
-def create_selection_menu():
-    global game_state, selected_map, selected_character
-    game_state = 1
-    clear_menu()
-    
-    menu_entities.append(Entity(model='quad', scale=(20, 20), color=color.black33, z=1))
-    menu_entities.append(Text('MAP & CHARACTER SELECTION', origin=(0,0), y=0.4, scale=1.5, color=color.yellow))
-    
-    # Map Selection
-    menu_entities.append(Text('Select Map:', origin=(0,0), x=-0.3, y=0.2, scale=1.2))
-    
-    def set_map_jungle():
-        global selected_map
-        selected_map = "Jungle"
-        map_status_text.text = "Map: Jungle (Unlocked)"
-        map_status_text.color = color.green
-        
-    def set_map_ice():
-        map_status_text.text = "Map: Ice/Water (LOCKED! Unlock at Level 5)"
-        map_status_text.color = color.red
-        
-    def set_map_desert():
-        map_status_text.text = "Map: Desert (LOCKED! Unlock at Level 10)"
-        map_status_text.color = color.red
-
-    menu_entities.append(Button(text='Jungle (Unlocked)', color=color.dark_green, scale=(0.25, 0.08), x=-0.3, y=0.1, on_click=set_map_jungle))
-    menu_entities.append(Button(text='Ice/Water (Locked)', color=color.dark_gray, scale=(0.25, 0.08), x=-0.3, y=0.0, on_click=set_map_ice))
-    menu_entities.append(Button(text='Desert (Locked)', color=color.dark_gray, scale=(0.25, 0.08), x=-0.3, y=-0.1, on_click=set_map_desert))
-    
-    map_status_text = Text('Map: Jungle (Unlocked)', origin=(0,0), x=-0.3, y=-0.22, scale=1, color=color.green)
-    menu_entities.append(map_status_text)
-    
-    # Character Selection
-    menu_entities.append(Text('Select Character:', origin=(0,0), x=0.3, y=0.2, scale=1.2))
-    
-    def set_char_commando():
-        global selected_character
-        selected_character = "Commando"
-        char_status.text = "Character: Commando (HP 200, Fast)"
-        
-    def set_char_tank():
-        global selected_character
-        selected_character = "Tank"
-        char_status.text = "Character: Tank (HP 300, Heavy)"
-
-    menu_entities.append(Button(text='Commando', color=color.azure, scale=(0.25, 0.08), x=0.3, y=0.1, on_click=set_char_commando))
-    menu_entities.append(Button(text='Tank Hero', color=color.blue, scale=(0.25, 0.08), x=0.3, y=0.0, on_click=set_char_tank))
-    
-    char_status = Text('Character: Commando', origin=(0,0), x=0.3, y=-0.1, scale=1, color=color.cyan)
-    menu_entities.append(char_status)
-    
-    # Start Button
-    def launch_game():
-        start_game_world()
-        
-    menu_entities.append(Button(text='START BATTLE', color=color.orange, scale=(0.4, 0.1), y=-0.35, on_click=launch_game))
-    menu_entities.append(Button(text='BACK', color=color.gray, scale=(0.2, 0.06), y=-0.45, on_click=create_main_menu))
-
-
-# ==========================================================
-# 2. Gameplay World (Third-Person Free Fire Style)
-# ==========================================================
-
+# Entities
 player = None
 zombies = []
-hud_text = None
-zone_timer_text = None
-hp_text = None
-damage_text = None
+axes = []
+loots = []
 
-class DamagePopup(Entity):
-    def __init__(self, text, pos):
-        super().__init__()
-        self.text = Text(text=text, position=pos, scale=1, color=color.orange, origin=(0,0))
-        self.duration = 0.6
-        
-    def update(self):
-        self.duration -= time.dt
-        self.text.y += time.dt * 0.5
-        if self.duration <= 0:
-            destroy(self.text)
-            destroy(self)
+class Player:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.speed = 5
+        self.radius = 20
+        self.angle = 0
 
-class PlayerCharacter(Entity):
-    def __init__(self, **kwargs):
-        super().__init__()
-        # करैक्टर बॉडी (Free Fire स्टाइल विज़िबल हीरो)
-        self.model = 'cube'
-        self.color = color.cyan
-        self.scale = (1, 2, 1)
-        self.origin_y = -0.5
+    def move(self, keys):
+        dx, dy = 0, 0
+        if keys[pygame.K_w] or keys[pygame.K_UP]: dy -= self.speed
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]: dy += self.speed
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]: dx -= self.speed
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]: dx += self.speed
         
-        # छोटा गन मॉडल जो करैक्टर के हाथ में दिखेगा
-        self.gun = Entity(model='cube', color=color.black, scale=(0.2, 0.2, 0.8), position=(0.5, 0.5, 0.5), parent=self)
-        
-        # Third-Person Camera (करैक्टर के पीछे और ऊपर सेट किया गया है)
-        camera.parent = None
-        camera.position = (0, 4, -8)
-        
-        self.speed = 10
-        
-    def update(self):
-        global game_state
-        if game_state != 2:
-            return
+        if dx != 0 and dy != 0:
+            dx *= 0.7071
+            dy *= 0.7071
             
-        # Movement (WASD / Mobile directions)
-        move_dir = Vec3(
-            held_keys['d'] - held_keys['a'],
-            0,
-            held_keys['w'] - held_keys['s']
-        ).normalized()
+        self.x += dx
+        self.y += dy
         
-        if move_dir.length() > 0:
-            self.position += move_dir * self.speed * time.dt
-            # करैक्टर को चलने की दिशा में घुमाना
-            target_rotation = camera.rotation_y + atan2(move_dir.x, move_dir.z) * (180 / 3.14159)
-            self.rotation_y = target_rotation
-            
-        # Third-Person Camera follows the player smoothly
-        camera.position = self.position + Vec3(0, 3, -6)
-        camera.rotation = (15, self.rotation_y, 0)
+        # Map Boundaries
+        self.x = max(50, min(2950, self.x))
+        self.y = max(50, min(2950, self.y))
         
-        # Mouse look for camera angle rotation
-        if mouse.left:
-            self.rotation_y += mouse.velocity[0] * 50
+        if dx != 0 or dy != 0:
+            self.angle = math.atan2(dy, dx)
 
-class Zombie(Entity):
-    def __init__(self, z_type, pos):
-        super().__init__()
-        self.z_type = z_type  # "normal" (HP 200) or "heavy" (HP 500)
-        self.model = 'cube'
-        self.position = pos
-        self.scale = (1, 2, 1) if z_type == "normal" else (1.4, 2.5, 1.4)
-        self.color = color.green if z_type == "normal" else color.dark_green
+    def draw(self, surface, cam_x, cam_y):
+        sx = self.x - cam_x
+        sy = self.y - cam_y
+        pygame.draw.circle(surface, CYAN, (int(sx), int(sy)), self.radius)
+        hx = sx + math.cos(self.angle) * 25
+        hy = sy + math.sin(self.angle) * 25
+        pygame.draw.line(surface, BLACK, (sx, sy), (hx, hy), 6)
+
+class Zombie:
+    def __init__(self, x, y, z_type):
+        self.x = x
+        self.y = y
+        self.z_type = z_type
         self.hp = 200 if z_type == "normal" else 500
         self.max_hp = self.hp
+        self.speed = 2.5 if z_type == "normal" else 1.8
+        self.radius = 18 if z_type == "normal" else 26
         self.attack_cooldown = 0
-        
-        # ज़ॉम्बी के ऊपर उसकी HP दिखने वाला टेक्स्ट बार
-        self.hp_bar = Text(text=f'HP: {self.hp}/{self.max_hp}', scale=0.8, origin=(0,0), color=color.red)
-        
-    def update(self):
-        global game_state, player_hp
-        if game_state != 2 or not player:
-            if self.hp_bar:
-                destroy(self.hp_bar)
-            return
+
+    def update(self, player_x, player_y):
+        global player_hp
+        dist = math.hypot(player_x - self.x, player_y - self.y)
+        if dist > 5:
+            angle = math.atan2(player_y - self.y, player_x - self.x)
+            self.x += math.cos(angle) * self.speed
+            self.y += math.sin(angle) * self.speed
             
-        # ज़ॉम्बी की HP बार की पोजीशन स्क्रीन पर अपडेट करना
-        screen_pos = camera.world_to_screen(self.position + Vec3(0, 1.8, 0))
-        self.hp_bar.position = screen_pos
-        self.hp_bar.text = f'HP: {self.hp}'
-        
-        dist = distance(self.position, player.position)
-        
-        # ज़ॉम्बी का प्लेयर की तरफ बढ़ना
-        if dist > 2.5:
-            self.look_at(player.position)
-            self.rotation_x = 0
-            self.rotation_z = 0
-            self.direction = self.forward
-            self.position += self.direction * 3 * time.dt
-            
-        # 100 मीटर की रेंज में कुल्हाड़ी फेंकना
-        if dist <= 100:
-            self.attack_cooldown += time.dt
-            if self.attack_cooldown >= 3.0: 
+        # 100m range axe throw
+        if dist <= 300:
+            self.attack_cooldown += 1
+            if self.attack_cooldown >= 120:
                 self.attack_cooldown = 0
-                ThrowingAxe(self.position + Vec3(0,1,0), player.position)
+                axes.append(ThrowingAxe(self.x, self.y, player_x, player_y))
 
-    def on_destroy(self):
-        if self.hp_bar:
-            destroy(self.hp_bar)
+    def draw(self, surface, cam_x, cam_y):
+        sx = self.x - cam_x
+        sy = self.y - cam_y
+        color_z = GREEN if self.z_type == "normal" else DARK_GREEN
+        pygame.draw.circle(surface, color_z, (int(sx), int(sy)), self.radius)
+        
+        bar_w = 40
+        bar_h = 6
+        fill = max(0, (self.hp / self.max_hp) * bar_w)
+        pygame.draw.rect(surface, RED, (sx - bar_w/2, sy - self.radius - 12, bar_w, bar_h))
+        pygame.draw.rect(surface, GREEN, (sx - bar_w/2, sy - self.radius - 12, fill, bar_h))
 
-class ThrowingAxe(Entity):
-    def __init__(self, start_pos, target_pos):
-        super().__init__()
-        self.model = 'cube'
-        self.color = color.brown
-        self.scale = (0.3, 0.8, 0.2)
-        self.position = start_pos
-        self.speed = 15
-        
-    def update(self):
-        global game_state, player_hp
-        if game_state != 2 or not player:
-            destroy(self)
-            return
-            
-        direction = (player.position - self.position).normalized()
-        self.position += direction * self.speed * time.dt
-        self.rotation_z += 500 * time.dt
-        
-        # Hit check with player
-        if distance(self.position, player.position) < 1.5:
+class ThrowingAxe:
+    def __init__(self, x, y, tx, ty):
+        self.x = x
+        self.y = y
+        angle = math.atan2(ty - y, tx - x)
+        self.vx = math.cos(angle) * 7
+        self.vy = math.sin(angle) * 7
+        self.active = True
+
+    def update(self, player_x, player_y):
+        global player_hp
+        self.x += self.vx
+        self.y += self.vy
+        if math.hypot(player_x - self.x, player_y - self.y) < 20:
             player_hp -= 25
-            update_hud()
-            destroy(self)
-            if player_hp <= 0:
-                game_over()
+            self.active = False
 
-# Medkit/HP Loot
-class Loot(Entity):
-    def __init__(self, pos, l_type):
-        super().__init__()
-        self.model = 'cube'
-        self.position = pos
-        self.l_type = l_type  # "medkit"
-        self.color = color.green
-        self.scale = (0.6, 0.6, 0.6)
-        
-    def update(self):
-        global game_state, player_hp, max_player_hp
-        if game_state != 2 or not player:
-            return
-        
-        if distance(self.position, player.position) < 1.5:
-            player_hp = min(player_hp + 50, max_player_hp)
-            update_hud()
-            destroy(self)
+    def draw(self, surface, cam_x, cam_y):
+        pygame.draw.circle(surface, BROWN, (int(self.x - cam_x), int(self.y - cam_y)), 6)
 
-def start_game_world():
-    global game_state, player, zombies, hud_text, zone_timer_text, hp_text, damage_text, game_time, player_hp, max_player_hp, score
+class Loot:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def draw(self, surface, cam_x, cam_y):
+        pygame.draw.rect(surface, GREEN, (int(self.x - cam_x - 8), int(self.y - cam_y - 8), 16, 16))
+
+def start_game():
+    global player, zombies, loots, game_state, player_hp, max_player_hp, score, game_time, gun_damage
     game_state = 2
-    clear_menu()
-    
-    game_time = 600
     max_player_hp = 200 if selected_character == "Commando" else 300
     player_hp = max_player_hp
     score = 0
+    game_time = 600.0
+    gun_damage = 50
     
-    # 1000m स्केल का ऑप्टिमाइज़्ड जंगल नक्शा (नदी और पेड़)
-    ground = Entity(model='plane', scale=(500, 1, 500), color=color.rgb(34, 139, 34), texture='white_cube')
-    game_entities.append(ground)
-    
-    # नदी (Water strip in jungle)
-    river = Entity(model='quad', scale=(400, 20), color=color.blue, rotation_x=90, position=(0, 0.1, 0))
-    game_entities.append(river)
-    
-    # पेड़ और हरियाली
-    for _ in range(40):
-        rx = random.uniform(-200, 200)
-        rz = random.uniform(-200, 200)
-        if abs(rx) < 20: continue # नदी के पास खाली जगह
-        tree = Entity(model='cube', color=color.brown, scale=(2, 8, 2), position=(rx, 4, rz))
-        leaves = Entity(model='sphere', color=color.dark_green, scale=(6, 6, 6), position=(rx, 8, rz))
-        game_entities.append(tree)
-        game_entities.append(leaves)
-
-    # घरों में केवल मेडकिट / HP लूट (No gun loot)
-    for _ in range(25):
-        rx = random.uniform(-180, 180)
-        rz = random.uniform(-180, 180)
-        loot_box = Loot((rx, 1, rz), l_type="medkit")
-        game_entities.append(loot_box)
-
-    # Player Spawn
-    player = PlayerCharacter(position=(0, 1, -20))
-    game_entities.append(player)
-    
-    # Zombies Spawn (कुल 100 ज़ॉम्बी: 50 नॉर्मल [200 HP], 50 भारी [500 HP])
+    player = Player(1500, 1500)
     zombies.clear()
+    axes.clear()
+    loots.clear()
+    
     for i in range(100):
         z_type = "normal" if i < 50 else "heavy"
-        pos = Vec3(random.uniform(-150, 150), 1, random.uniform(-150, 150))
-        z = Zombie(z_type, pos)
-        zombies.append(z)
-        game_entities.append(z)
+        zombies.append(Zombie(random.randint(200, 2800), random.randint(200, 2800), z_type))
+        
+    for _ in range(25):
+        loots.append(Loot(random.randint(200, 2800), random.randint(200, 2800)))
 
-    # HUD (English UI)
-    hud_text = Text(text=f'Zombies Left: {len(zombies)} | Score: {score}', position=(-0.85, 0.45), scale=1.2, color=color.yellow)
-    zone_timer_text = Text(text=f'Zone Time: 10:00', position=(0.5, 0.45), scale=1.2, color=color.red)
-    hp_text = Text(text=f'Player HP: {player_hp}/{max_player_hp}', position=(-0.85, 0.38), scale=1.2, color=color.green)
-    damage_text = Text(text=f'Gun Damage: {gun_damage} (Press U to Upgrade)', position=(-0.85, 0.31), scale=1.1, color=color.cyan)
+def run_game():
+    global game_state, player_hp, score, gun_damage, game_time
+    running = True
     
-    game_entities.extend([hud_text, zone_timer_text, hp_text, damage_text])
-    
-    # Controls Instruction
-    inst = Text(text='[Left Click]: Shoot | [W,A,S,D]: Run & Move | [U]: Upgrade Gun | Gun: PERMANENT AMMO', position=(-0.85, -0.45), scale=0.9, color=color.light_gray)
-    game_entities.append(inst)
-
-def update_hud():
-    if hud_text and hp_text and damage_text:
-        hud_text.text = f'Zombies Left: {len(zombies)} | Score: {score}'
-        hp_text.text = f'Player HP: {player_hp}/{max_player_hp}'
-        damage_text.text = f'Gun Damage: {gun_damage} (Press U to Upgrade)'
-
-def input(key):
-    global game_state, gun_damage, score, player_hp
-    if game_state == 2:
-        # Gun Upgrade (U की दबाने पर)
-        if key == 'u' and score >= 100:
-            score -= 100
-            gun_damage += 25
-            update_hud()
+    while running:
+        dt = clock.tick(60) / 1000.0
+        screen.fill((20, 40, 20))
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
             
-        # Shooting Mechanism with Damage Popups
-        if key == 'left mouse down':
-            hit_info = raycast(camera.world_position, camera.forward, distance=100)
-            if hit_info.hit:
-                hit_entity = hit_info.entity
-                if isinstance(hit_entity, Zombie):
-                    hit_entity.hp -= gun_damage
-                    hit_entity.color = color.red
-                    invoke(setattr, hit_entity, 'color', color.green if hit_entity.z_type == "normal" else color.dark_green, delay=0.1)
-                    
-                    # स्क्रीन पर डैमेज नंबर दिखाना (जैसे Free Fire में दिखता है)
-                    DamagePopup(f'-{gun_damage}', (0, 0))
-                    
-                    if hit_entity.hp <= 0:
-                        destroy(hit_entity)
-                        if hit_entity in zombies:
-                            zombies.remove(hit_entity)
-                        score += 50
-                        update_hud()
+            if game_state == 0:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = event.pos
+                    if WIDTH//2 - 150 <= mx <= WIDTH//2 + 150:
+                        if 300 <= my <= 380:
+                            game_state = 1
+                        elif 420 <= my <= 500:
+                            pygame.quit()
+                            exit()
+                            
+            elif game_state == 1:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = event.pos
+                    if WIDTH//2 - 200 <= mx <= WIDTH//2 + 200:
+                        if 450 <= my <= 530:
+                            start_game()
+                            
+            elif game_state == 2:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:
+                        mx, my = event.pos
+                        cam_x = player.x - WIDTH // 2
+                        cam_y = player.y - HEIGHT // 2
+                        target_wx = mx + cam_x
+                        target_wy = my + cam_y
                         
-                        if len(zombies) == 0:
-                            game_win()
+                        for z in zombies[:]:
+                            if math.hypot(z.x - target_wx, z.y - target_wy) < z.radius + 15:
+                                z.hp -= gun_damage
+                                if z.hp <= 0:
+                                    zombies.remove(z)
+                                    score += 50
+                                    if len(zombies) == 0:
+                                        game_state = 4
+                                break
+                                
+            elif game_state in [3, 4]:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    game_state = 0
 
-def game_over():
-    global game_state
-    game_state = 3
-    for e in game_entities:
-        destroy(e)
-    game_entities.clear()
-    
-    Text('YOU DIED! ZOMBIES KILLED YOU.', origin=(0,0), y=0.1, scale=2, color=color.red)
-    Button(text='Main Menu', color=color.orange, scale=(0.3, 0.1), y=-0.1, on_click=create_main_menu)
-
-def game_win():
-    global game_state
-    game_state = 4
-    for e in game_entities:
-        destroy(e)
-    game_entities.clear()
-    
-    Text('VICTORY! ALL ZOMBIES ELIMINATED.', origin=(0,0), y=0.1, scale=2, color=color.green)
-    Button(text='Main Menu', color=color.orange, scale=(0.3, 0.1), y=-0.1, on_click=create_main_menu)
-
-# --- Main Game Loop (Timer) ---
-def update():
-    global game_state, game_time
-    if game_state == 2:
-        # 10 मिनट का ज़ोन टाइमर
-        game_time -= time.dt
-        mins = int(game_time // 60)
-        secs = int(game_time % 60)
-        if zone_timer_text:
-            zone_timer_text.text = f'Zone Time: {mins:02d}:{secs:02d}'
+        if game_state == 0:
+            screen.fill(DARK_GRAY)
+            title = font_large.render("ZOMBIE Z: MOBILE SURVIVAL", True, YELLOW)
+            screen.blit(title, (WIDTH//2 - title.get_width()//2, 150))
             
-        if game_time <= 0:
-            game_over()
+            pygame.draw.rect(screen, RED, (WIDTH//2 - 150, 300, 300, 80))
+            play_text = font_med.render("PLAY GAME", True, WHITE)
+            screen.blit(play_text, (WIDTH//2 - play_text.get_width()//2, 325))
+            
+            pygame.draw.rect(screen, GRAY, (WIDTH//2 - 150, 420, 300, 80))
+            exit_text = font_med.render("EXIT", True, WHITE)
+            screen.blit(exit_text, (WIDTH//2 - exit_text.get_width()//2, 445))
 
-# --- Start Game ---
-create_main_menu()
+        elif game_state == 1:
+            screen.fill(DARK_GRAY)
+            title = font_large.render("MAP & CHARACTER SELECT", True, YELLOW)
+            screen.blit(title, (WIDTH//2 - title.get_width()//2, 100))
+            
+            map_txt = font_med.render("Map: Jungle (Unlocked) | Ice/Desert (Locked)", True, GREEN)
+            screen.blit(map_txt, (WIDTH//2 - map_txt.get_width()//2, 220))
+            
+            char_txt = font_med.render("Character: Commando (HP 200) / Tank (HP 300)", True, CYAN)
+            screen.blit(char_txt, (WIDTH//2 - char_txt.get_width()//2, 320))
+            
+            pygame.draw.rect(screen, (200, 120, 20), (WIDTH//2 - 200, 450, 400, 80))
+            start_btn = font_large.render("START BATTLE", True, WHITE)
+            screen.blit(start_btn, (WIDTH//2 - start_btn.get_width()//2, 470))
 
-app.run()
+        elif game_state == 2:
+            game_time -= dt
+            if game_time <= 0 or player_hp <= 0:
+                game_state = 3
+                
+            keys = pygame.key.get_pressed()
+            player.move(keys)
+            
+            cam_x = player.x - WIDTH // 2
+            cam_y = player.y - HEIGHT // 2
+            
+            for z in zombies:
+                z.update(player.x, player.y)
+                
+            for axe in axes[:]:
+                axe.update(player.x, player.y)
+                if not axe.active:
+                    axes.remove(axe)
+                    
+            for loot in loots[:]:
+                if math.hypot(player.x - loot.x, player.y - loot.y) < 25:
+                    player_hp = min(player_hp + 50, max_player_hp)
+                    loots.remove(loot)
+
+            if keys[pygame.K_u] and score >= 100:
+                score -= 100
+                gun_damage += 25
+
+            screen.fill(GREEN)
+            pygame.draw.rect(screen, BLUE, (-cam_x + 1400, -cam_y, 200, 3000))
+            
+            for loot in loots:
+                loot.draw(screen, cam_x, cam_y)
+            for z in zombies:
+                z.draw(screen, cam_x, cam_y)
+            for axe in axes:
+                axe.draw(screen, cam_x, cam_y)
+            player.draw(screen, cam_x, cam_y)
+
+            hud_z = font_small.render(f"Zombies Left: {len(zombies)} | Score: {score}", True, YELLOW)
+            hud_hp = font_small.render(f"HP: {player_hp}/{max_player_hp}", True, CYAN)
+            hud_time = font_small.render(f"Zone Time: {int(game_time//60):02d}:{int(game_time%60):02d}", True, RED)
+            hud_dmg = font_small.render(f"Gun Damage: {gun_damage} (Press U to Upgrade)", True, WHITE)
+            
+            screen.blit(hud_z, (20, 20))
+            screen.blit(hud_hp, (20, 50))
+            screen.blit(hud_time, (WIDTH - 200, 20))
+            screen.blit(hud_dmg, (20, 80))
+
+        elif game_state == 3:
+            screen.fill(BLACK)
+            over_txt = font_large.render("YOU DIED! ZOMBIES KILLED YOU.", True, RED)
+            screen.blit(over_txt, (WIDTH//2 - over_txt.get_width()//2, HEIGHT//2 - 50))
+            click_txt = font_med.render("Click anywhere to return to Main Menu", True, WHITE)
+            screen.blit(click_txt, (WIDTH//2 - click_txt.get_width()//2, HEIGHT//2 + 20))
+
+        elif game_state == 4:
+            screen.fill(BLACK)
+            win_txt = font_large.render("VICTORY! ALL ZOMBIES ELIMINATED.", True, GREEN)
+            screen.blit(win_txt, (WIDTH//2 - win_txt.get_width()//2, HEIGHT//2 - 50))
+            click_txt = font_med.render("Click anywhere to return to Main Menu", True, WHITE)
+            screen.blit(click_txt, (WIDTH//2 - click_txt.get_width()//2, HEIGHT//2 + 20))
+
+        pygame.display.flip()
+
+if __name__ == "__main__":
+    run_game()
+
