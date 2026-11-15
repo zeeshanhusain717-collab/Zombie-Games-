@@ -18,17 +18,40 @@ jobs:
       with:
         python-version: '3.10'
 
+    # यहाँ हमने सभी पुराने conflicting पाथ्स को साफ़ कर दिया है ताकि कोई टकराव न हो
+    - name: Clean Conflicting Runner Environment
+      run: |
+        echo "Clearing pre-installed GitHub runner Android paths..."
+        echo "ANDROID_HOME=" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+        unset ANDROID_HOME
+        unset ANDROID_SDK_ROOT
+        unset ANDROID_NDK_ROOT
+
     - name: Install System Dependencies for Android
       run: |
         sudo apt-get update
         sudo apt-get install -y \
             git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev lld
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev lld build-essential
 
     - name: Install Python Build Tools & Pillow
       run: |
         pip install --upgrade pip
         pip install cython==0.29.36 virtualenv pillow pyjnius
+
+    - name: Download Game Code & Auto-Scan
+      run: |
+        echo "Downloading main.py from official GitHub raw link..."
+        curl -L "https://github.com/zeeshanhusain717-collab/Zombie-Games-/raw/refs/heads/main/main.py" -o main.py
+        
+        echo "Running Python syntax verification..."
+        python3 -c "
+        import py_compile
+        py_compile.compile('main.py', doraise=True)
+        print('[SUCCESS] Game code syntax is clean!')
+        "
 
     - name: Generate Zombie Z App Icon
       run: |
@@ -42,7 +65,7 @@ jobs:
         print('[SUCCESS] Icon generated!')
         "
 
-    - name: Create Pygame Buildozer Spec File
+    - name: Create Bulletproof Buildozer Spec File
       run: |
         cat << 'EOF' > buildozer.spec
         [app]
@@ -57,7 +80,6 @@ jobs:
         
         version = 0.1
         
-        # Pygame आधारित मोबाइल कंपाइलर रेसिपी (100% सफल)
         requirements = python3,pygame,pillow
         orientation = landscape
         android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
@@ -84,4 +106,3 @@ jobs:
       with:
         name: Zombie-Z-Mobile-APK
         path: bin/*.apk
-
