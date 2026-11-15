@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # Android कंपाइल करने के लिए सबसे बेहतरीन एनवायरनमेंट
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout Repository
@@ -54,16 +54,22 @@ jobs:
         print('[SUCCESS] Icon generated!')
         "
 
-    - name: Create Buildozer Spec File
+    - name: Create Buildozer Spec File (Fixed)
       run: |
         cat << 'EOF' > buildozer.spec
         [app]
         title = Zombie Z
         package.name = zombiez
         package.domain = org.zombie.zgame
+        
+        # यहाँ source.dir और version जोड़ दिया गया है ताकि पुराना एरर न आए
+        source.dir = .
         source.include_exts = py,png,jpg,kv,atlas
         source.include_patterns = icon.png
         icon.filename = icon.png
+        
+        version = 0.1
+        
         requirements = python3,ursina,panda3d,pygame,pillow
         orientation = landscape
         android.permissions = INTERNET
@@ -84,3 +90,4 @@ jobs:
       with:
         name: Zombie-Z-Mobile-APK
         path: bin/*.apk
+
