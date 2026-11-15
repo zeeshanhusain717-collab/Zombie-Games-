@@ -23,7 +23,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
             git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev lld
 
     - name: Install Python Build Tools & Pillow
       run: |
@@ -71,10 +71,10 @@ jobs:
         
         requirements = python3,ursina,panda3d,pygame,pillow
         orientation = landscape
-        android.permissions = INTERNET
+        android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
         fullscreen = 1
 
-        # एंड्रॉइड SDK और API के स्थिर वर्जन्स ताकि ऑटोमैटिक एरर न आए
+        # एंड्रॉइड SDK, NDK और API के स्थिर वर्जन्स (2026 कंपैटिबल)
         android.api = 31
         android.min_api = 21
         android.sdk = 30
@@ -88,7 +88,8 @@ jobs:
 
     - name: Install Buildozer & Build APK
       run: |
-        pip install buildozer
+        pip install --upgrade buildozer
+        # डिबग लॉग के साथ बिल्ड चलाना ताकि यदि कोई छोटी कमी हो तो साफ़ दिखे
         buildozer -v android debug
 
     - name: Upload APK Artifact (v4)
