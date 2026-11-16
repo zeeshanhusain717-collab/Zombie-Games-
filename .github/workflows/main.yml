@@ -1,0 +1,75 @@
+name: Build Zombie Z Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python Environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Clean Conflicting Runner Environment
+      run: |
+        echo "ANDROID_HOME=" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+        unset ANDROID_HOME
+        unset ANDROID_SDK_ROOT
+        unset ANDROID_NDK_ROOT
+
+    - name: Install System Dependencies for Android
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev lld build-essential
+
+    - name: Install Python Build Tools & Pillow
+      run: |
+        pip install --upgrade pip
+        pip install cython==0.29.36 virtualenv pillow pyjnius
+
+    - name: Verify Python Syntax
+      run: |
+        python3 -c "
+        import py_compile
+        py_compile.compile('main.py', doraise=True)
+        print('[SUCCESS] Game code syntax is clean!')
+        "
+
+    - name: Generate App Icon if Missing
+      run: |
+        python3 -c "
+        import os
+        if not os.path.exists('icon.png'):
+            from PIL import Image, ImageDraw
+            img = Image.new('RGB', (512, 512), color=(15, 30, 15))
+            d = ImageDraw.Draw(img)
+            d.rectangle([100, 100, 412, 412], fill=(40, 180, 40))
+            d.text((140, 230), 'ZOMBIE Z', fill=(255, 255, 255))
+            img.save('icon.png')
+            print('[SUCCESS] Icon generated!')
+        "
+
+    - name: Install Buildozer & Build APK
+      run: |
+        pip-check || true
+        pip install --upgrade buildozer
+        buildozer -v android debug
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Zombie-Z-Mobile-APK
+        path: bin/*.apk
+
