@@ -19,147 +19,464 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Python & Pillow
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install Pillow
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2'
 
-      - name: Auto-Construct Android Project & Verify Structure via Python
+      - name: Create Full Android Project & Write All Files (Kotlin + Gradle + Manifest)
         run: |
-          python3 - << 'EOF'
-          import os
-          import textwrap
+          echo "[INFO] Creating required directory structure..."
+          mkdir -p app/src/main/java/com/zombiez/game
+          mkdir -p app/src/main/res/drawable
 
-          print("[INFO] Starting Python automated structural validation & setup...")
+          echo "[INFO] Writing root build.gradle..."
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.1.1' apply false
+              id 'org.jetbrains.kotlin.android' version '1.9.0' apply false
+          }
 
-          # 1. Create required directory structure
-          os.makedirs("app/src/main/java/com/zombiez/game", exist_ok=True)
-          os.makedirs("app/src/main/res/drawable", exist_ok=True)
+          task clean(type: Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
 
-          # 2. Safely move and verify Kotlin source files
-          for file in ["MainActivity.kt", "GameView.kt"]:
-              if os.path.exists(file):
-                  with open(file, "r", encoding="utf-8") as f:
-                      content = f.read()
+          echo "[INFO] Writing settings.gradle..."
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
 
-                  if "package com.zombiez.game" not in content:
-                      content = "package com.zombiez.game\n" + content
+          rootProject.name = "ZombieZ-Erangel"
+          include ':app'
+          EOF
 
-                  dest = os.path.join(
-                      "app/src/main/java/com/zombiez/game",
-                      file
+          echo "[INFO] Writing app/build.gradle..."
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+
+          android {
+              namespace 'com.zombiez.game'
+              compileSdk 33
+
+              defaultConfig {
+                  applicationId "com.zombiez.game"
+                  minSdk 21
+                  targetSdk 33
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.10.1'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          echo "[INFO] Writing AndroidManifest.xml..."
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/icon"
+                  android:label="Zombie Z Erangel"
+                  android:roundIcon="@drawable/icon"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="landscape">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          echo "[INFO] Writing MainActivity.kt..."
+          cat << 'EOF' > app/src/main/java/com/zombiez/game/MainActivity.kt
+          package com.zombiez.game
+
+          import android.app.Activity
+          import android.os.Bundle
+          import android.view.Window
+          import android.view.WindowManager
+
+          class MainActivity : Activity() {
+              private lateinit var gameView: GameView
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  requestWindowFeature(Window.FEATURE_NO_TITLE)
+                  window.setFlags(
+                      WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                      WindowManager.LayoutParams.FLAG_FULLSCREEN
                   )
+                  gameView = GameView(this)
+                  setContentView(gameView)
+              }
 
-                  with open(dest, "w", encoding="utf-8") as f:
-                      f.write(content)
+              override fun onResume() {
+                  super.onResume()
+                  gameView.resume()
+              }
 
-                  print(f"[VERIFIED & MOVED] {file} -> {dest}")
+              override fun onPause() {
+                  super.onPause()
+                  gameView.pause()
+              }
+          }
+          EOF
 
-          # 3. Write clean root build.gradle with compatible AGP 8.1.1 and Kotlin 1.9.0
-          with open("build.gradle", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  buildscript {
-                      repositories {
-                          google()
-                          mavenCentral()
+          echo "[INFO] Writing GameView.kt..."
+          cat << 'EOF' > app/src/main/java/com/zombiez/game/GameView.kt
+          package com.zombiez.game
+
+          import android.content.Context
+          import android.graphics.Canvas
+          import android.graphics.Color
+          import android.graphics.Paint
+          import android.view.MotionEvent
+          import android.view.SurfaceHolder
+          import android.view.SurfaceView
+          import kotlin.math.*
+          import kotlin.random.Random
+
+          class GameView(context: Context) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
+              private var thread: Thread? = null
+              private var isPlaying = false
+              private lateinit var canvas: Canvas
+              private val paint = Paint()
+
+              private var screenWidth = 1280f
+              private var screenHeight = 720f
+
+              private var gameState = 0
+              private var playerCoins = 1000
+
+              private var playerX = 1500f
+              private var playerY = 1500f
+              private var playerHp = 200f
+              private var maxPlayerHp = 200f
+              private var playerSpeed = 5.5f
+
+              private var joyActive = false
+              private var joyX = 180f
+              private var joyY = 540f
+              private var joyKnobX = 180f
+              private var joyKnobY = 540f
+              private val joyRadius = 75f
+
+              private class Zombie(var x: Float, var y: Float, val type: Int) {
+                  var hp: Float = if (type == 1) 100f else if (type == 2) 150f else 300f
+                  val maxHp: Float = hp
+                  val speed: Float = if (type == 1) 2.2f else if (type == 2) 3.5f else 1.5f
+                  val radius: Float = if (type == 3) 28f else 18f
+              }
+              private val zombies = mutableListOf<Zombie>()
+              private var zoneRadius = 1600f
+
+              init {
+                  holder.addCallback(this)
+                  isFocusable = true
+              }
+
+              override fun surfaceCreated(holder: SurfaceHolder) {
+                  isPlaying = true
+                  thread = Thread(this)
+                  thread?.start()
+              }
+
+              override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                  screenWidth = width.toFloat()
+                  screenHeight = height.toFloat()
+                  joyY = screenHeight - 160f
+                  joyX = 180f
+                  joyKnobX = joyX
+                  joyKnobY = joyY
+              }
+
+              override fun surfaceDestroyed(holder: SurfaceHolder) {
+                  isPlaying = false
+                  try { thread?.join() } catch (e: Exception) {}
+              }
+
+              fun resume() {
+                  isPlaying = true
+                  thread = Thread(this)
+                  thread?.start()
+              }
+
+              fun pause() {
+                  isPlaying = false
+                  try { thread?.join() } catch (e: Exception) {}
+              }
+
+              private fun startBattle() {
+                  gameState = 3
+                  playerX = 1500f
+                  playerY = 1500f
+                  playerHp = maxPlayerHp
+                  zoneRadius = 1600f
+                  zombies.clear()
+                  for (i in 0 until 25) {
+                      zombies.add(Zombie(Random.nextFloat() * 2800f + 100f, Random.nextFloat() * 2800f + 100f, Random.nextInt(1, 4)))
+                  }
+              }
+
+              override fun run() {
+                  var lastTime = System.nanoTime()
+                  val targetTime = 1000000000L / 60
+
+                  while (isPlaying) {
+                      val now = System.nanoTime()
+                      lastTime = now
+
+                      if (holder.surface.isValid) {
+                          canvas = holder.lockCanvas()
+                          synchronized(holder) {
+                              update()
+                              drawGame(canvas)
+                          }
+                          holder.unlockCanvasAndPost(canvas)
                       }
-                      dependencies {
-                          classpath 'com.android.tools.build:gradle:8.1.1'
-                          classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+
+                      val elapsed = System.nanoTime() - now
+                      val waitTime = (targetTime - elapsed) / 1000000L
+                      if (waitTime > 0) {
+                          try { Thread.sleep(waitTime) } catch (e: Exception) {}
                       }
                   }
+              }
 
-                  allprojects {
-                      repositories {
-                          google()
-                          mavenCentral()
-                      }
-                  }
-
-                  task clean(type: Delete) {
-                      delete rootProject.buildDir
-                  }
-              """))
-
-          # 4. Write clean settings.gradle
-          with open("settings.gradle", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  rootProject.name = "ZombieZ-Erangel"
-                  include ':app'
-              """))
-
-          # 5. Write clean app/build.gradle
-          with open("app/build.gradle", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  apply plugin: 'com.android.application'
-                  apply plugin: 'org.jetbrains.kotlin.android'
-
-                  android {
-                      namespace 'com.zombiez.game'
-                      compileSdk 33
-
-                      defaultConfig {
-                          applicationId "com.zombiez.game"
-                          minSdk 21
-                          targetSdk 33
-                          versionCode 1
-                          versionName "1.0"
-                      }
-
-                      buildTypes {
-                          release {
-                              minifyEnabled false
-                              proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+              private fun update() {
+                  if (gameState == 3) {
+                      if (joyActive) {
+                          val dx = joyKnobX - joyX
+                          val dy = joyKnobY - joyY
+                          val dist = hypot(dx, dy)
+                          if (dist > 5f) {
+                              playerX += (dx / dist) * playerSpeed
+                              playerY += (dy / dist) * playerSpeed
+                              playerX = playerX.coerceIn(100f, 2900f)
+                              playerY = playerY.coerceIn(100f, 2900f)
                           }
                       }
 
-                      compileOptions {
-                          sourceCompatibility JavaVersion.VERSION_1_8
-                          targetCompatibility JavaVersion.VERSION_1_8
+                      for (z in zombies) {
+                          val zdx = playerX - z.x
+                          val zdy = playerY - z.y
+                          val zDist = hypot(zdx, zdy)
+                          if (zDist > 20f) {
+                              z.x += (zdx / zDist) * z.speed
+                              z.y += (zdy / zDist) * z.speed
+                          } else {
+                              playerHp -= 0.5f
+                              if (playerHp <= 0) gameState = 4
+                          }
                       }
 
-                      kotlinOptions {
-                          jvmTarget = '1.8'
+                      if (zoneRadius > 400f) zoneRadius -= 0.1f
+                      if (hypot(playerX - 1500f, playerY - 1500f) > zoneRadius) {
+                          playerHp -= 0.3f
+                          if (playerHp <= 0) gameState = 4
+                      }
+
+                      if (zombies.isEmpty()) gameState = 5
+                  }
+              }
+
+              private fun drawGame(canvas: Canvas) {
+                  canvas.drawColor(Color.rgb(45, 120, 45))
+
+                  val camX = playerX - screenWidth / 2f
+                  val camY = playerY - screenHeight / 2f
+
+                  canvas.save()
+                  canvas.translate(-camX, -camY)
+
+                  paint.color = Color.rgb(100, 70, 50)
+                  canvas.drawRect(1300f, 1300f, 1700f, 1700f, paint)
+                  paint.color = Color.rgb(180, 50, 50)
+                  canvas.drawRect(1350f, 1350f, 1650f, 1650f, paint)
+
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 8f
+                  paint.color = Color.rgb(30, 100, 255)
+                  canvas.drawCircle(1500f, 1500f, zoneRadius, paint)
+                  paint.style = Paint.Style.FILL
+
+                  for (z in zombies) {
+                      paint.color = if (z.type == 1) Color.rgb(60, 160, 60) else if (z.type == 2) Color.rgb(180, 100, 40) else Color.rgb(140, 20, 140)
+                      canvas.drawCircle(z.x, z.y, z.radius, paint)
+                      paint.color = Color.RED
+                      canvas.drawRect(z.x - 20f, z.y - z.radius - 10f, z.x + 20f, z.y - z.radius - 6f, paint)
+                      paint.color = Color.YELLOW
+                      val fill = (z.hp / z.maxHp) * 40f
+                      canvas.drawRect(z.x - 20f, z.y - z.radius - 10f, z.x - 20f + fill, z.y - z.radius - 6f, paint)
+                  }
+
+                  paint.color = Color.rgb(40, 90, 220)
+                  canvas.drawCircle(playerX, playerY, 22f, paint)
+                  paint.color = Color.WHITE
+                  canvas.drawCircle(playerX, playerY, 22f, paint.apply { style = Paint.Style.STROKE; strokeWidth = 3f })
+                  paint.style = Paint.Style.FILL
+
+                  canvas.restore()
+
+                  when (gameState) {
+                      0 -> {
+                          canvas.drawColor(Color.rgb(20, 20, 25))
+                          paint.textSize = 42f
+                          paint.color = Color.rgb(235, 130, 20)
+                          canvas.drawText("ZOMBIE Z: ERANGEL MOBILE ELITE", screenWidth / 2 - 380f, 180f, paint)
+                          paint.color = Color.rgb(210, 50, 50)
+                          canvas.drawRect(screenWidth / 2 - 160f, 320f, screenWidth / 2 + 160f, 410f, paint)
+                          paint.color = Color.WHITE
+                          paint.textSize = 32f
+                          canvas.drawText("START SURVIVAL", screenWidth / 2 - 130f, 375f, paint)
+                      }
+                      3 -> {
+                          paint.color = Color.argb(100, 255, 255, 255)
+                          canvas.drawCircle(joyX, joyY, joyRadius, paint)
+                          paint.color = Color.rgb(0, 210, 210)
+                          canvas.drawCircle(joyKnobX, joyKnobY, 30f, paint)
+
+                          paint.color = Color.rgb(210, 50, 50)
+                          canvas.drawCircle(screenWidth - 150f, screenHeight - 150f, 75f, paint)
+                          paint.color = Color.WHITE
+                          paint.textSize = 28f
+                          canvas.drawText("FIRE", screenWidth - 180f, screenHeight - 140f, paint)
+
+                          paint.textSize = 26f
+                          paint.color = Color.YELLOW
+                          canvas.drawText("HP: ${playerHp.toInt()} | Zombies: ${zombies.size} | Coins: $playerCoins🪙", 40f, 50f, paint)
+                      }
+                      4 -> {
+                          canvas.drawColor(Color.BLACK)
+                          paint.textSize = 45f; paint.color = Color.RED
+                          canvas.drawText("YOU DIED IN THE ERANGEL FOG...", screenWidth / 2 - 330f, screenHeight / 2 - 30f, paint)
+                      }
+                      5 -> {
+                          canvas.drawColor(Color.BLACK)
+                          paint.textSize = 45f; paint.color = Color.GREEN
+                          canvas.drawText("ERANGEL DAY SURVIVED!", screenWidth / 2 - 220f, screenHeight / 2 - 30f, paint)
                       }
                   }
+              }
 
-                  dependencies {
-                      implementation 'androidx.core:core-ktx:1.10.1'
-                      implementation 'androidx.appcompat:appcompat:1.6.1'
+              override fun onTouchEvent(event: MotionEvent): Boolean {
+                  val x = event.x; val y = event.y
+                  when (event.action) {
+                      MotionEvent.ACTION_DOWN -> {
+                          when (gameState) {
+                              0 -> startBattle()
+                              3 -> {
+                                  if (hypot(x - (screenWidth - 150f), y - (screenHeight - 150f)) <= 75f) {
+                                      if (zombies.isNotEmpty()) {
+                                          val nearest = zombies.minByOrNull { hypot(playerX - it.x, playerY - it.y) }
+                                          if (nearest != null && hypot(playerX - nearest.x, playerY - nearest.y) < 600f) {
+                                              nearest.hp -= 50f
+                                              if (nearest.hp <= 0) { zombies.remove(nearest); playerCoins += 20 }
+                                          }
+                                      }
+                                  } else if (hypot(x - joyX, y - joyY) <= joyRadius + 50f) {
+                                      joyActive = true; joyKnobX = x; joyKnobY = y
+                                  }
+                              }
+                              4, 5 -> gameState = 0
+                          }
+                      }
+                      MotionEvent.ACTION_MOVE -> {
+                          if (joyActive) {
+                              val dx = x - joyX; val dy = y - joyY; val dist = hypot(dx, dy)
+                              if (dist > joyRadius) {
+                                  joyKnobX = joyX + (dx / dist) * joyRadius
+                                  joyKnobY = joyY + (dy / dist) * joyRadius
+                              } else { joyKnobX = x; joyKnobY = y }
+                          }
+                      }
+                      MotionEvent.ACTION_UP -> { joyActive = false; joyKnobX = joyX; joyKnobY = joyY }
                   }
-              """))
+                  return true
+              }
+          }
+          EOF
 
-          # 6. Write AndroidManifest.xml
-          with open("app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  <?xml version="1.0" encoding="utf-8"?>
-                  <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-                      package="com.zombiez.game">
+      - name: Generate Assets via Python
+        run: |
+          python3 - << 'EOF'
+          from PIL import Image, ImageDraw
+          import os
 
-                      <application
-                          android:allowBackup="true"
-                          android:icon="@drawable/icon"
-                          android:label="Zombie Z Erangel"
-                          android:roundIcon="@drawable/icon"
-                          android:supportsRtl="true"
-                          android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+          os.makedirs("app/src/main/res/drawable", exist_ok=True)
 
-                          <activity
-                              android:name=".MainActivity"
-                              android:exported="true"
-                              android:screenOrientation="landscape">
+          # 1. App Icon (512x512)
+          icon = Image.new("RGB", (512, 512), color=(20, 25, 30))
+          d = ImageDraw.Draw(icon)
+          d.rectangle([100, 100, 412, 412], fill=(210, 50, 50))
+          d.text((160, 230), "Z-Z", fill=(255, 255, 255))
+          icon.save("app/src/main/res/drawable/icon.png")
 
-                              <intent-filter>
-                                  <action android:name="android.intent.action.MAIN" />
-                                  <category android:name="android.intent.category.LAUNCHER" />
-                              </intent-filter>
+          # 2. Player Sprite (Rocky)
+          player = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+          pd = ImageDraw.Draw(player)
+          pd.ellipse([16, 16, 48, 48], fill=(40, 90, 220))
+          pd.rectangle([28, 0, 36, 20], fill=(255, 255, 255))
+          player.save("app/src/main/res/drawable/player.png")
 
-                          </activity>
-                      </application>
-                  </manifest>
-              """))
-
-          print("[SUCCESS] Android project files created successfully!")
+          # 3. Zombie Sprite
+          zombie = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+          zd = ImageDraw.Draw(zombie)
+          zd.ellipse([12, 12, 52, 52], fill=(34, 139, 34))
+          zd.ellipse([24, 24, 40, 40], fill=(210, 50, 50))
+          zombie.save("app/src/main/res/drawable/zombie.png")
+          print("[SUCCESS] Assets generated successfully!")
           EOF
 
       - name: Generate Gradle Wrapper & Build APK
@@ -174,4 +491,3 @@ jobs:
           name: ZombieZ-Erangel-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
