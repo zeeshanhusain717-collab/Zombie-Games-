@@ -68,7 +68,7 @@ jobs:
           include ':app'
           EOF
 
-          echo "[INFO] Writing app/build.gradle..."
+          echo "[INFO] Writing app/build.gradle (Cleaned & Metadata-Fixed)..."
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -106,7 +106,6 @@ jobs:
 
           dependencies {
               implementation 'androidx.core:core-ktx:1.10.1'
-              implementation 'androidx.appcompat:appcompat:1.6.1'
           }
           EOF
 
