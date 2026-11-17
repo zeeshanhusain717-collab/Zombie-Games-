@@ -55,7 +55,7 @@ jobs:
 
                   print(f"[VERIFIED & MOVED] {file} -> {dest}")
 
-          # 3. Write clean root build.gradle using dedent to eliminate leading spaces
+          # 3. Write clean root build.gradle with compatible AGP and Kotlin versions
           with open("build.gradle", "w", encoding="utf-8") as f:
               f.write(textwrap.dedent("""\
                   plugins {
@@ -68,7 +68,7 @@ jobs:
                   }
               """))
 
-          # 4. Write clean settings.gradle
+          # 4. Write clean settings.gradle with proper dependency resolution modes
           with open("settings.gradle", "w", encoding="utf-8") as f:
               f.write(textwrap.dedent("""\
                   pluginManagement {
@@ -80,7 +80,7 @@ jobs:
                   }
 
                   dependencyResolutionManagement {
-                      repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                      repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
                       repositories {
                           google()
                           mavenCentral()
@@ -164,7 +164,7 @@ jobs:
                   </manifest>
               """))
 
-          print("[SUCCESS] Android project files created successfully without spacing errors!")
+          print("[SUCCESS] Android project files created successfully with fixed metadata resolution!")
           EOF
 
       - name: Build APK via Gradle
