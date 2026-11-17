@@ -25,13 +25,10 @@ jobs:
         pip install Pillow
         python3 generate_assets.py
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew || true
-
-    - name: Build Debug APK with Gradle
+    - name: Generate Gradle Wrapper & Build APK
       run: |
-        gradle wrapper --gradle-version 7.5 || true
-        chmod +x gradlew || true
+        gradle wrapper --gradle-version 7.5
+        chmod +x gradlew
         ./gradlew assembleDebug
 
     - name: Upload APK Artifact
