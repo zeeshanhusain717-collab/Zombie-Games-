@@ -19,16 +19,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '7.5'
-
       - name: Auto-Construct Android Project & Verify Structure via Python
         run: |
           python3 - << 'EOF'
           import os
           import textwrap
+          import subprocess
 
           print("[INFO] Starting Python automated structural validation & setup...")
 
@@ -55,12 +51,25 @@ jobs:
 
                   print(f"[VERIFIED & MOVED] {file} -> {dest}")
 
-          # 3. Write clean root build.gradle with compatible AGP and Kotlin versions
+          # 3. Write clean root build.gradle
           with open("build.gradle", "w", encoding="utf-8") as f:
               f.write(textwrap.dedent("""\
-                  plugins {
-                      id 'com.android.application' version '7.4.2' apply false
-                      id 'org.jetbrains.kotlin.android' version '1.8.0' apply false
+                  buildscript {
+                      repositories {
+                          google()
+                          mavenCentral()
+                      }
+                      dependencies {
+                          classpath 'com.android.tools.build:gradle:7.4.2'
+                          classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0'
+                      }
+                  }
+
+                  allprojects {
+                      repositories {
+                          google()
+                          mavenCentral()
+                      }
                   }
 
                   task clean(type: Delete) {
@@ -68,25 +77,9 @@ jobs:
                   }
               """))
 
-          # 4. Write clean settings.gradle with proper dependency resolution modes
+          # 4. Write clean settings.gradle
           with open("settings.gradle", "w", encoding="utf-8") as f:
               f.write(textwrap.dedent("""\
-                  pluginManagement {
-                      repositories {
-                          google()
-                          mavenCentral()
-                          gradlePluginPortal()
-                      }
-                  }
-
-                  dependencyResolutionManagement {
-                      repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-                      repositories {
-                          google()
-                          mavenCentral()
-                      }
-                  }
-
                   rootProject.name = "ZombieZ-Erangel"
                   include ':app'
               """))
@@ -94,10 +87,8 @@ jobs:
           # 5. Write clean app/build.gradle
           with open("app/build.gradle", "w", encoding="utf-8") as f:
               f.write(textwrap.dedent("""\
-                  plugins {
-                      id 'com.android.application'
-                      id 'org.jetbrains.kotlin.android'
-                  }
+                  apply plugin: 'com.android.application'
+                  apply plugin: 'org.jetbrains.kotlin.android'
 
                   android {
                       namespace 'com.zombiez.game'
@@ -164,12 +155,14 @@ jobs:
                   </manifest>
               """))
 
-          print("[SUCCESS] Android project files created successfully with fixed metadata resolution!")
+          print("[SUCCESS] Android project files and build scripts created successfully!")
           EOF
 
-      - name: Build APK via Gradle
+      - name: Generate Gradle Wrapper & Build APK
         run: |
-          gradle assembleDebug --stacktrace
+          gradle wrapper --gradle-version 7.5
+          chmod +x gradlew
+          ./gradlew assembleDebug --info
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
