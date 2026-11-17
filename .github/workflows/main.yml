@@ -28,6 +28,7 @@ jobs:
         run: |
           python3 - << 'EOF'
           import os
+          import textwrap
 
           print("[INFO] Starting Python automated structural validation & setup...")
 
@@ -54,118 +55,121 @@ jobs:
 
                   print(f"[VERIFIED & MOVED] {file} -> {dest}")
 
-          # 3. Write clean root build.gradle
+          # 3. Write clean root build.gradle using dedent to eliminate leading spaces
           with open("build.gradle", "w", encoding="utf-8") as f:
-              f.write("""plugins {
-              id 'com.android.application' version '7.4.2' apply false
-              id 'org.jetbrains.kotlin.android' version '1.8.0' apply false
-          }
+              f.write(textwrap.dedent("""\
+                  plugins {
+                      id 'com.android.application' version '7.4.2' apply false
+                      id 'org.jetbrains.kotlin.android' version '1.8.0' apply false
+                  }
 
-          task clean(type: Delete) {
-              delete rootProject.buildDir
-          }
-          """)
+                  task clean(type: Delete) {
+                      delete rootProject.buildDir
+                  }
+              """))
 
           # 4. Write clean settings.gradle
           with open("settings.gradle", "w", encoding="utf-8") as f:
-              f.write("""pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
+              f.write(textwrap.dedent("""\
+                  pluginManagement {
+                      repositories {
+                          google()
+                          mavenCentral()
+                          gradlePluginPortal()
+                      }
+                  }
 
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
+                  dependencyResolutionManagement {
+                      repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                      repositories {
+                          google()
+                          mavenCentral()
+                      }
+                  }
 
-          rootProject.name = "ZombieZ-Erangel"
-          include ':app'
-          """)
+                  rootProject.name = "ZombieZ-Erangel"
+                  include ':app'
+              """))
 
           # 5. Write clean app/build.gradle
           with open("app/build.gradle", "w", encoding="utf-8") as f:
-              f.write("""plugins {
-              id 'com.android.application'
-              id 'org.jetbrains.kotlin.android'
-          }
-
-          android {
-              namespace 'com.zombiez.game'
-              compileSdk 33
-
-              defaultConfig {
-                  applicationId "com.zombiez.game"
-                  minSdk 21
-                  targetSdk 33
-                  versionCode 1
-                  versionName "1.0"
-              }
-
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+              f.write(textwrap.dedent("""\
+                  plugins {
+                      id 'com.android.application'
+                      id 'org.jetbrains.kotlin.android'
                   }
-              }
 
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_1_8
-                  targetCompatibility JavaVersion.VERSION_1_8
-              }
+                  android {
+                      namespace 'com.zombiez.game'
+                      compileSdk 33
 
-              kotlinOptions {
-                  jvmTarget = '1.8'
-              }
-          }
+                      defaultConfig {
+                          applicationId "com.zombiez.game"
+                          minSdk 21
+                          targetSdk 33
+                          versionCode 1
+                          versionName "1.0"
+                      }
 
-          dependencies {
-              implementation 'androidx.core:core-ktx:1.9.0'
-              implementation 'androidx.appcompat:appcompat:1.6.1'
-          }
-          """)
+                      buildTypes {
+                          release {
+                              minifyEnabled false
+                              proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                          }
+                      }
+
+                      compileOptions {
+                          sourceCompatibility JavaVersion.VERSION_1_8
+                          targetCompatibility JavaVersion.VERSION_1_8
+                      }
+
+                      kotlinOptions {
+                          jvmTarget = '1.8'
+                      }
+                  }
+
+                  dependencies {
+                      implementation 'androidx.core:core-ktx:1.9.0'
+                      implementation 'androidx.appcompat:appcompat:1.6.1'
+                  }
+              """))
 
           # 6. Write AndroidManifest.xml
           with open("app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
-              f.write("""<?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.zombiez.game">
+              f.write(textwrap.dedent("""\
+                  <?xml version="1.0" encoding="utf-8"?>
+                  <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+                      package="com.zombiez.game">
 
-              <application
-                  android:allowBackup="true"
-                  android:icon="@drawable/icon"
-                  android:label="Zombie Z Erangel"
-                  android:roundIcon="@drawable/icon"
-                  android:supportsRtl="true"
-                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                      <application
+                          android:allowBackup="true"
+                          android:icon="@drawable/icon"
+                          android:label="Zombie Z Erangel"
+                          android:roundIcon="@drawable/icon"
+                          android:supportsRtl="true"
+                          android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:screenOrientation="landscape">
+                          <activity
+                              android:name=".MainActivity"
+                              android:exported="true"
+                              android:screenOrientation="landscape">
 
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
+                              <intent-filter>
+                                  <action android:name="android.intent.action.MAIN" />
+                                  <category android:name="android.intent.category.LAUNCHER" />
+                              </intent-filter>
 
-                  </activity>
-              </application>
-          </manifest>
-          """)
+                          </activity>
+                      </application>
+                  </manifest>
+              """))
 
-          print("[SUCCESS] Android project files created successfully!")
-
+          print("[SUCCESS] Android project files created successfully without spacing errors!")
           EOF
 
       - name: Build APK via Gradle
         run: |
-          gradle assembleDebug
+          gradle assembleDebug --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -173,4 +177,3 @@ jobs:
           name: ZombieZ-Erangel-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
