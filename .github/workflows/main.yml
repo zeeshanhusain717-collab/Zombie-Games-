@@ -19,12 +19,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2'
+
       - name: Auto-Construct Android Project & Verify Structure via Python
         run: |
           python3 - << 'EOF'
           import os
           import textwrap
-          import subprocess
 
           print("[INFO] Starting Python automated structural validation & setup...")
 
@@ -51,7 +55,7 @@ jobs:
 
                   print(f"[VERIFIED & MOVED] {file} -> {dest}")
 
-          # 3. Write clean root build.gradle
+          # 3. Write clean root build.gradle with compatible AGP 8.1.1 and Kotlin 1.9.0
           with open("build.gradle", "w", encoding="utf-8") as f:
               f.write(textwrap.dedent("""\
                   buildscript {
@@ -60,8 +64,8 @@ jobs:
                           mavenCentral()
                       }
                       dependencies {
-                          classpath 'com.android.tools.build:gradle:7.4.2'
-                          classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0'
+                          classpath 'com.android.tools.build:gradle:8.1.1'
+                          classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
                       }
                   }
 
@@ -120,7 +124,7 @@ jobs:
                   }
 
                   dependencies {
-                      implementation 'androidx.core:core-ktx:1.9.0'
+                      implementation 'androidx.core:core-ktx:1.10.1'
                       implementation 'androidx.appcompat:appcompat:1.6.1'
                   }
               """))
@@ -155,14 +159,14 @@ jobs:
                   </manifest>
               """))
 
-          print("[SUCCESS] Android project files and build scripts created successfully!")
+          print("[SUCCESS] Android project files created successfully!")
           EOF
 
       - name: Generate Gradle Wrapper & Build APK
         run: |
-          gradle wrapper --gradle-version 7.5
+          gradle wrapper --gradle-version 8.2
           chmod +x gradlew
-          ./gradlew assembleDebug --info
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -170,3 +174,4 @@ jobs:
           name: ZombieZ-Erangel-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
