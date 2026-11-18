@@ -99,6 +99,7 @@ jobs:
           }
 
           dependencies {
+              implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
           }
           EOF
 
@@ -129,7 +130,7 @@ jobs:
           </manifest>
           EOF
 
-          echo "[SUCCESS] Gradle and manifest files written."
+          echo "[SUCCESS] Gradle and manifest files written successfully."
 
       - name: Build APK
         run: |
