@@ -1,4 +1,4 @@
-name: Auto Build Zombie Z Survival APK
+name: Auto Build Zombie Z 3D Test APK
 
 on:
   push:
@@ -19,20 +19,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Python & Pillow
-        run: |
-          python3 -m pip install --upgrade pip
-          pip install Pillow
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2'
 
-      - name: Write Game Source Files
+      - name: Write 3D Test Source Files
         run: |
           mkdir -p app/src/main/java/com/zombiez/game
-          mkdir -p app/src/main/res/drawable
 
           cat > gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
@@ -67,7 +61,7 @@ jobs:
               }
           }
 
-          rootProject.name = "ZombieZ-Survival"
+          rootProject.name = "ZombieZ-3D-Test"
           include ':app'
           EOF
 
@@ -85,14 +79,13 @@ jobs:
                   applicationId "com.zombiez.game"
                   minSdk 21
                   targetSdk 34
-                  versionCode 2
-                  versionName "1.1"
+                  versionCode 3
+                  versionName "3.0-test"
               }
 
               buildTypes {
                   release {
                       minifyEnabled false
-                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
                   }
               }
 
@@ -107,7 +100,7 @@ jobs:
           }
 
           dependencies {
-              // Pure native implementation, no external libraries
+              // No external libraries, pure OpenGL ES 2.0
           }
           EOF
 
@@ -117,9 +110,7 @@ jobs:
 
               <application
                   android:allowBackup="true"
-                  android:icon="@drawable/icon"
-                  android:label="Zombie Z Survival"
-                  android:roundIcon="@drawable/icon"
+                  android:label="Zombie Z 3D Test"
                   android:supportsRtl="true"
                   android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
@@ -143,787 +134,402 @@ jobs:
           package com.zombiez.game
 
           import android.app.Activity
+          import android.opengl.GLSurfaceView
           import android.os.Bundle
-          import android.view.Window
+          import android.view.MotionEvent
           import android.view.WindowManager
 
           class MainActivity : Activity() {
-              private lateinit var gameView: GameView
+              private lateinit var glView: GLSurfaceView
+              private lateinit var renderer: GameRenderer
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  requestWindowFeature(Window.FEATURE_NO_TITLE)
-                  window.setFlags(
-                      WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                      WindowManager.LayoutParams.FLAG_FULLSCREEN
-                  )
-                  gameView = GameView(this)
-                  setContentView(gameView)
+                  window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                  renderer = GameRenderer()
+                  glView = GLSurfaceView(this)
+                  glView.setEGLContextClientVersion(2)
+                  glView.setRenderer(renderer)
+                  glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+                  setContentView(glView)
               }
 
               override fun onResume() {
                   super.onResume()
-                  gameView.resume()
+                  glView.onResume()
               }
 
               override fun onPause() {
                   super.onPause()
-                  gameView.pause()
-              }
-          }
-          EOF
-
-          cat > app/src/main/java/com/zombiez/game/GameView.kt << 'EOF'
-          package com.zombiez.game
-
-          import android.content.Context
-          import android.graphics.Bitmap
-          import android.graphics.BitmapFactory
-          import android.graphics.Canvas
-          import android.graphics.Color
-          import android.graphics.Paint
-          import android.graphics.RectF
-          import android.view.MotionEvent
-          import android.view.SurfaceHolder
-          import android.view.SurfaceView
-          import kotlin.math.*
-          import kotlin.random.Random
-
-          class GameView(context: Context) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
-
-              companion object {
-                  const val STATE_MENU = 0
-                  const val STATE_PLAY = 1
-                  const val STATE_DEAD = 2
-                  const val STATE_WON = 3
-
-                  const val WORLD = 20000f
-                  const val CENTER = 10000f
-                  const val PLAYER_R = 22f
-                  const val MAX_WAVE = 10
-
-                  const val ROLE_MOVE = 1
-                  const val ROLE_AIM = 2
-                  const val ROLE_FIRE = 3
-
-                  // Zombie kinds: 0 walker, 1 axeman, 2 buckethead, 3 mutant, 4 runner
-                  val KIND_HP = floatArrayOf(100f, 180f, 300f, 260f, 70f)
-                  val KIND_SPEED = floatArrayOf(70f, 80f, 55f, 90f, 170f)
-                  val KIND_DPS = floatArrayOf(6f, 10f, 14f, 12f, 5f)
-                  val KIND_RADIUS = floatArrayOf(22f, 26f, 30f, 28f, 18f)
-                  val KIND_COLOR = intArrayOf(
-                      Color.rgb(50, 140, 50),
-                      Color.rgb(180, 90, 30),
-                      Color.rgb(60, 120, 190),
-                      Color.rgb(100, 50, 150),
-                      Color.rgb(180, 50, 50)
-                  )
-
-                  val WEAPON_NAMES = arrayOf("PISTOL (9mm)", "RIFLE (5.56)")
-                  val MAG = intArrayOf(12, 30)
-                  val RESERVE_START = intArrayOf(96, 180)
-                  val FIRE_DELAY = floatArrayOf(0.25f, 0.1f)
-                  val DAMAGE = floatArrayOf(35f, 60f)
-                  val RELOAD_TIME = floatArrayOf(1.8f, 2.4f)
-              }
-
-              private class Zombie(var x: Float, var y: Float, val kind: Int) {
-                  var hp: Float = KIND_HP[kind]
-                  val maxHp: Float = KIND_HP[kind]
-                  val radius: Float = KIND_RADIUS[kind]
-                  val speed: Float = KIND_SPEED[kind]
-              }
-
-              private class Bullet(var x: Float, var y: Float, val vx: Float, val vy: Float) {
-                  var travel = 0f
-              }
-
-              // ---- thread and drawing ----
-              private val lock = Any()
-              private var thread: Thread? = null
-              @Volatile private var running = false
-              private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-              private val startRect = RectF()
-              private val weaponRect = RectF()
-
-              // ---- screen layout (set in layout()) ----
-              private var screenW = 1280f
-              private var screenH = 720f
-              private var s = 1f
-              private var joyR = 75f
-              private var moveBaseX = 0f
-              private var moveBaseY = 0f
-              private var aimBaseX = 0f
-              private var aimBaseY = 0f
-              private var fireX = 0f
-              private var fireY = 0f
-              private var fireR = 75f
-              private var runX = 0f
-              private var runY = 0f
-              private var runR = 45f
-              private var reloadX = 0f
-              private var reloadY = 0f
-              private var reloadR = 45f
-
-              // ---- touch state (multi-touch safe) ----
-              private val pointerRole = HashMap<Int, Int>()
-              private var moveDX = 0f
-              private var moveDY = 0f
-              private var aimDX = 0f
-              private var aimDY = 0f
-              private var fireHeld = false
-              private var aimIdle = 0f
-
-              // ---- game state ----
-              private var state = STATE_MENU
-              private var coins = 1000
-              private var kills = 0
-              private var wave = 0
-              private var spawnLeft = 0
-              private var spawnTimer = 0f
-              private var banner = 0f
-              private var zoneRadius = 9500f
-              private var zoneTarget = 9500f
-
-              // ---- player ----
-              private var px = CENTER
-              private var py = CENTER
-              private var hp = 200f
-              private val maxHp = 200f
-              private var aimAngle = 0f
-              private var sprinting = false
-              private var weapon = 0
-              private val ammo = intArrayOf(MAG[0], MAG[1])
-              private val reserve = intArrayOf(RESERVE_START[0], RESERVE_START[1])
-              private var fireTimer = 0f
-              private var reloadTimer = 0f
-
-              private val zombies = mutableListOf<Zombie>()
-              private val bullets = mutableListOf<Bullet>()
-
-              // ---- world ----
-              private val obstacles = ArrayList<RectF>()
-              private val trees = ArrayList<FloatArray>()
-
-              // ---- sprites ----
-              private var playerBitmap: Bitmap? = null
-              private val sprites = arrayOfNulls<Bitmap>(5)
-
-              init {
-                  holder.addCallback(this)
-                  isFocusable = true
-
-                  val res = context.resources
-                  val pkg = context.packageName
-                  playerBitmap = loadSprite(res, pkg, "player")
-                  val names = arrayOf("zombie_1", "zombie_2", "zombie_3", "zombie_4", "zombie_5")
-                  for (i in names.indices) {
-                      sprites[i] = loadSprite(res, pkg, names[i])
-                  }
-
-                  buildWorld()
-                  layout(screenW, screenH)
-              }
-
-              private fun loadSprite(res: android.content.res.Resources, pkg: String, name: String): Bitmap? {
-                  val id = res.getIdentifier(name, "drawable", pkg)
-                  return if (id != 0) BitmapFactory.decodeResource(res, id) else null
-              }
-
-              private fun buildWorld() {
-                  val rng = Random(42)
-                  repeat(45) {
-                      val w = 160f + rng.nextFloat() * 160f
-                      val h = 120f + rng.nextFloat() * 140f
-                      val x = 300f + rng.nextFloat() * (WORLD - 600f - w)
-                      val y = 300f + rng.nextFloat() * (WORLD - 600f - h)
-                      val r = RectF(x, y, x + w, y + h)
-                      if (hypot(r.centerX() - CENTER, r.centerY() - CENTER) > 900f) obstacles.add(r)
-                  }
-                  repeat(140) {
-                      trees.add(floatArrayOf(
-                          300f + rng.nextFloat() * (WORLD - 600f),
-                          300f + rng.nextFloat() * (WORLD - 600f),
-                          18f + rng.nextFloat() * 12f
-                      ))
-                  }
-              }
-
-              private fun layout(w: Float, h: Float) {
-                  screenW = w
-                  screenH = h
-                  s = h / 720f
-                  joyR = 75f * s
-
-                  moveBaseX = 150f * s
-                  moveBaseY = h - 150f * s
-                  aimBaseX = w - 330f * s
-                  aimBaseY = h - 150f * s
-
-                  fireX = w - 150f * s
-                  fireY = h - 150f * s
-                  fireR = 75f * s
-
-                  runX = moveBaseX
-                  runY = moveBaseY - 130f * s
-                  runR = 45f * s
-
-                  reloadX = fireX
-                  reloadY = fireY - 170f * s
-                  reloadR = 45f * s
-
-                  weaponRect.set(w - 250f * s, 20f * s, w - 20f * s, 84f * s)
-                  startRect.set(w / 2f - 170f * s, h / 2f - 20f * s, w / 2f + 170f * s, h / 2f + 70f * s)
-              }
-
-              // ---- SurfaceHolder callbacks ----
-              override fun surfaceCreated(holder: SurfaceHolder) {
-                  startLoop()
-              }
-
-              override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                  synchronized(lock) { layout(width.toFloat(), height.toFloat()) }
-              }
-
-              override fun surfaceDestroyed(holder: SurfaceHolder) {
-                  stopLoop()
-              }
-
-              fun resume() {
-                  if (holder.surface.isValid) startLoop()
-              }
-
-              fun pause() {
-                  stopLoop()
-              }
-
-              private fun startLoop() {
-                  if (running) return
-                  running = true
-                  thread = Thread(this).also { it.start() }
-              }
-
-              private fun stopLoop() {
-                  running = false
-                  try { thread?.join() } catch (e: InterruptedException) {}
-                  thread = null
-              }
-
-              // ---- game loop (about 60 FPS, time based) ----
-              override fun run() {
-                  var last = System.nanoTime()
-                  while (running) {
-                      val now = System.nanoTime()
-                      val dt = min(0.05f, (now - last) / 1_000_000_000f)
-                      last = now
-
-                      if (holder.surface.isValid) {
-                          val c: Canvas? = holder.lockCanvas()
-                          if (c != null) {
-                              try {
-                                  synchronized(lock) {
-                                      update(dt)
-                                      drawFrame(c)
-                                  }
-                              } finally {
-                                  holder.unlockCanvasAndPost(c)
-                              }
-                          }
-                      }
-
-                      val sleepMs = 16L - (System.nanoTime() - now) / 1_000_000L
-                      if (sleepMs > 0) {
-                          try { Thread.sleep(sleepMs) } catch (e: InterruptedException) {}
-                      }
-                  }
-              }
-
-              // ---- battle control ----
-              private fun startBattle() {
-                  state = STATE_PLAY
-                  px = CENTER
-                  py = CENTER
-                  hp = maxHp
-                  kills = 0
-                  wave = 0
-                  spawnLeft = 0
-                  spawnTimer = 0f
-                  banner = 0f
-                  zoneRadius = 9500f
-                  zoneTarget = 9500f
-                  weapon = 0
-                  ammo[0] = MAG[0]; ammo[1] = MAG[1]
-                  reserve[0] = RESERVE_START[0]; reserve[1] = RESERVE_START[1]
-                  fireTimer = 0f
-                  reloadTimer = 0f
-                  fireHeld = false
-                  sprinting = false
-                  moveDX = 0f; moveDY = 0f
-                  aimDX = 0f; aimDY = 0f
-                  aimIdle = 0f
-                  pointerRole.clear()
-                  zombies.clear()
-                  bullets.clear()
-              }
-
-              private fun startWave(n: Int) {
-                  wave = n
-                  spawnLeft = 6 + n * 3
-                  spawnTimer = 1.5f
-                  banner = 2.5f
-                  zoneTarget = max(2000f, 9500f - n * 750f)
-              }
-
-              private fun spawnZombie() {
-                  val maxKind = min(4, (wave - 1) / 2)
-                  val kind = Random.nextInt(0, maxKind + 1)
-                  for (attempt in 0 until 12) {
-                      val a = Random.nextFloat() * 2f * PI.toFloat()
-                      val dist = 700f + Random.nextFloat() * 400f
-                      val x = (px + cos(a) * dist).coerceIn(300f, WORLD - 300f)
-                      val y = (py + sin(a) * dist).coerceIn(300f, WORLD - 300f)
-                      if (!blockedAt(x, y, KIND_RADIUS[kind])) {
-                          zombies.add(Zombie(x, y, kind))
-                          return
-                      }
-                  }
-              }
-
-              private fun shoot() {
-                  ammo[weapon]--
-                  fireTimer = FIRE_DELAY[weapon]
-                  val spread = if (weapon == 1) (Random.nextFloat() - 0.5f) * 0.06f else 0f
-                  val angle = aimAngle + spread
-                  val speed = 1100f
-                  val sx = px + cos(angle) * 30f
-                  val sy = py + sin(angle) * 30f
-                  bullets.add(Bullet(sx, sy, cos(angle) * speed, sin(angle) * speed))
-              }
-
-              private fun startReload() {
-                  if (reloadTimer > 0f) return
-                  if (ammo[weapon] >= MAG[weapon]) return
-                  if (reserve[weapon] <= 0) return
-                  reloadTimer = RELOAD_TIME[weapon]
-              }
-
-              private fun finishReload() {
-                  val needed = MAG[weapon] - ammo[weapon]
-                  val take = min(needed, reserve[weapon])
-                  ammo[weapon] += take
-                  reserve[weapon] -= take
-              }
-
-              private fun switchWeapon() {
-                  weapon = 1 - weapon
-                  reloadTimer = 0f
-                  fireTimer = 0.2f
-              }
-
-              // ---- collision ----
-              private fun blockedAt(x: Float, y: Float, r: Float): Boolean {
-                  for (o in obstacles) {
-                      val cx = x.coerceIn(o.left, o.right)
-                      val cy = y.coerceIn(o.top, o.bottom)
-                      val dx = x - cx
-                      val dy = y - cy
-                      if (dx * dx + dy * dy < r * r) return true
-                  }
-                  return false
-              }
-
-              // ---- update ----
-              private fun update(dt: Float) {
-                  if (state != STATE_PLAY) return
-                  if (banner > 0f) banner -= dt
-
-                  // Player movement
-                  val mvx = moveDX / joyR
-                  val mvy = moveDY / joyR
-                  val len = hypot(mvx, mvy)
-                  aimIdle += dt
-                  if (len > 0.15f) {
-                      if (aimIdle > 1f) aimAngle = atan2(mvy, mvx)
-                      val speed = if (sprinting) 420f else 210f
-                      val nx = (px + mvx * speed * dt).coerceIn(200f, WORLD - 200f)
-                      val ny = (py + mvy * speed * dt).coerceIn(200f, WORLD - 200f)
-                      if (!blockedAt(nx, py, PLAYER_R)) px = nx
-                      if (!blockedAt(px, ny, PLAYER_R)) py = ny
-                  }
-
-                  // Weapons
-                  fireTimer = max(0f, fireTimer - dt)
-                  if (reloadTimer > 0f) {
-                      reloadTimer -= dt
-                      if (reloadTimer <= 0f) finishReload()
-                  }
-                  if (fireHeld && fireTimer <= 0f && reloadTimer <= 0f) {
-                      if (ammo[weapon] > 0) shoot() else startReload()
-                  }
-
-                  // Bullets
-                  val bIt = bullets.iterator()
-                  while (bIt.hasNext()) {
-                      val b = bIt.next()
-                      b.x += b.vx * dt
-                      b.y += b.vy * dt
-                      b.travel += hypot(b.vx, b.vy) * dt
-
-                      var hit = false
-                      val zIt = zombies.iterator()
-                      while (zIt.hasNext()) {
-                          val z = zIt.next()
-                          if (hypot(b.x - z.x, b.y - z.y) < z.radius + 6f) {
-                              z.hp -= DAMAGE[weapon]
-                              hit = true
-                              if (z.hp <= 0f) {
-                                  zIt.remove()
-                                  coins += 30
-                                  kills++
-                              }
-                              break
-                          }
-                      }
-
-                      if (hit || b.travel > 900f || b.x < 0f || b.x > WORLD || b.y < 0f || b.y > WORLD) {
-                          bIt.remove()
-                      }
-                  }
-
-                  // Zombies
-                  for (z in zombies) {
-                      val dx = px - z.x
-                      val dy = py - z.y
-                      val d = hypot(dx, dy)
-                      if (d > z.radius + PLAYER_R + 2f) {
-                          val nx = z.x + dx / d * z.speed * dt
-                          val ny = z.y + dy / d * z.speed * dt
-                          if (!blockedAt(nx, z.y, z.radius)) z.x = nx
-                          if (!blockedAt(z.x, ny, z.radius)) z.y = ny
-                      } else {
-                          hp -= KIND_DPS[z.kind] * dt
-                      }
-                  }
-
-                  // Zone
-                  if (zoneRadius > zoneTarget) zoneRadius = max(zoneTarget, zoneRadius - 40f * dt)
-                  if (hypot(px - CENTER, py - CENTER) > zoneRadius) hp -= 10f * dt
-
-                  if (hp <= 0f) {
-                      hp = 0f
-                      state = STATE_DEAD
-                      return
-                  }
-
-                  // Waves
-                  if (spawnLeft > 0) {
-                      spawnTimer -= dt
-                      if (spawnTimer <= 0f) {
-                          spawnZombie()
-                          spawnLeft--
-                          spawnTimer = 0.7f
-                      }
-                  } else if (zombies.isEmpty()) {
-                      if (wave >= MAX_WAVE) {
-                          state = STATE_WON
-                          return
-                      }
-                      startWave(wave + 1)
-                  }
-              }
-
-              // ---- drawing helpers ----
-              private fun fillCircle(c: Canvas, x: Float, y: Float, r: Float, color: Int) {
-                  paint.style = Paint.Style.FILL
-                  paint.color = color
-                  c.drawCircle(x, y, r, paint)
-              }
-
-              private fun fillRect(c: Canvas, r: RectF, color: Int) {
-                  paint.style = Paint.Style.FILL
-                  paint.color = color
-                  c.drawRect(r, paint)
-              }
-
-              private fun drawText(c: Canvas, t: String, x: Float, y: Float, size: Float, color: Int, center: Boolean = false) {
-                  paint.style = Paint.Style.FILL
-                  paint.color = color
-                  paint.textSize = size
-                  paint.textAlign = if (center) Paint.Align.CENTER else Paint.Align.LEFT
-                  c.drawText(t, x, y, paint)
-                  paint.textAlign = Paint.Align.LEFT
-              }
-
-              private fun drawSprite(c: Canvas, bmp: Bitmap, cx: Float, cy: Float, size: Float) {
-                  paint.style = Paint.Style.FILL
-                  paint.color = Color.WHITE
-                  val h = size / 2f
-                  c.drawBitmap(bmp, null, RectF(cx - h, cy - h, cx + h, cy + h), paint)
-              }
-
-              // ---- draw ----
-              private fun drawFrame(c: Canvas) {
-                  when (state) {
-                      STATE_MENU -> { drawMenu(c); return }
-                      STATE_DEAD -> { drawEnd(c, "YOU DIED", Color.RED); return }
-                      STATE_WON -> { drawEnd(c, "SURVIVED ALL WAVES!", Color.GREEN); return }
-                  }
-
-                  val camX = px - screenW / 2f
-                  val camY = py - screenH / 2f
-                  c.drawColor(Color.rgb(35, 100, 35))
-
-                  c.save()
-                  c.translate(-camX, -camY)
-                  drawWorld(c, camX, camY)
-                  c.restore()
-
-                  drawHud(c)
-                  drawControls(c)
-              }
-
-              private fun drawWorld(c: Canvas, camX: Float, camY: Float) {
-                  // Grid for movement feel
-                  paint.style = Paint.Style.STROKE
-                  paint.strokeWidth = 2f
-                  paint.color = Color.argb(35, 0, 0, 0)
-                  var gx = floor(camX / 200f) * 200f
-                  while (gx < camX + screenW) {
-                      c.drawLine(gx, camY, gx, camY + screenH, paint)
-                      gx += 200f
-                  }
-                  var gy = floor(camY / 200f) * 200f
-                  while (gy < camY + screenH) {
-                      c.drawLine(camX, gy, camX + screenW, gy, paint)
-                      gy += 200f
-                  }
-
-                  // Map border
-                  paint.strokeWidth = 10f
-                  paint.color = Color.rgb(200, 30, 30)
-                  c.drawRect(0f, 0f, WORLD, WORLD, paint)
-
-                  // Zone
-                  paint.strokeWidth = 12f
-                  paint.color = Color.rgb(20, 90, 255)
-                  c.drawCircle(CENTER, CENTER, zoneRadius, paint)
-
-                  // Trees (no collision)
-                  for (t in trees) {
-                      fillCircle(c, t[0], t[1], t[2] + 6f, Color.rgb(20, 70, 20))
-                      fillCircle(c, t[0], t[1], t[2] * 0.6f, Color.rgb(40, 110, 40))
-                  }
-
-                  // Buildings (collision)
-                  for (o in obstacles) {
-                      fillRect(c, o, Color.rgb(110, 80, 60))
-                      fillRect(c, RectF(o.left + 12f, o.top + 12f, o.right - 12f, o.bottom - 12f), Color.rgb(160, 120, 90))
-                  }
-
-                  // Zombies
-                  for (z in zombies) {
-                      if (z.kind == 2) fillCircle(c, z.x, z.y, 50f, Color.argb(70, 255, 50, 50))
-                      if (z.kind == 3) fillCircle(c, z.x, z.y, 50f, Color.argb(70, 160, 60, 220))
-
-                      val bmp = sprites[z.kind]
-                      if (bmp != null) {
-                          drawSprite(c, bmp, z.x, z.y, 72f)
-                      } else {
-                          fillCircle(c, z.x, z.y, z.radius, KIND_COLOR[z.kind])
-                      }
-
-                      val barY = z.y - 44f
-                      fillRect(c, RectF(z.x - 25f, barY, z.x + 25f, barY + 5f), Color.RED)
-                      val ratio = (z.hp / z.maxHp).coerceIn(0f, 1f)
-                      fillRect(c, RectF(z.x - 25f, barY, z.x - 25f + 50f * ratio, barY + 5f), Color.YELLOW)
-                  }
-
-                  // Bullets
-                  for (b in bullets) {
-                      fillCircle(c, b.x, b.y, 5f, Color.YELLOW)
-                  }
-
-                  // Player
-                  val pb = playerBitmap
-                  if (pb != null) {
-                      drawSprite(c, pb, px, py, 72f)
-                  } else {
-                      fillCircle(c, px, py, PLAYER_R, Color.rgb(40, 90, 220))
-                  }
-
-                  // Aim line
-                  paint.style = Paint.Style.STROKE
-                  paint.strokeWidth = 4f
-                  paint.color = if (fireHeld) Color.RED else Color.WHITE
-                  c.drawLine(px, py, px + cos(aimAngle) * 110f, py + sin(aimAngle) * 110f, paint)
-              }
-
-              private fun drawHud(c: Canvas) {
-                  val bw = 260f * s
-                  val bh = 22f * s
-                  fillRect(c, RectF(20f * s, 20f * s, 20f * s + bw, 20f * s + bh), Color.DKGRAY)
-                  val ratio = (hp / maxHp).coerceIn(0f, 1f)
-                  val barColor = if (ratio > 0.35f) Color.rgb(60, 200, 60) else Color.rgb(220, 40, 40)
-                  fillRect(c, RectF(20f * s, 20f * s, 20f * s + bw * ratio, 20f * s + bh), barColor)
-                  drawText(c, "HP ${hp.toInt()}", 20f * s + bw + 12f * s, 20f * s + bh - 4f * s, 20f * s, Color.WHITE)
-
-                  drawText(c, "Wave $wave / $MAX_WAVE   Zombies ${zombies.size}", 20f * s, 75f * s, 24f * s, Color.YELLOW)
-                  drawText(c, "Coins $coins   Kills $kills", 20f * s, 108f * s, 24f * s, Color.YELLOW)
-
-                  if (banner > 0f) {
-                      drawText(c, "WAVE $wave", screenW / 2f, screenH * 0.3f, 56f * s, Color.rgb(255, 200, 0), true)
-                  }
-              }
-
-              private fun drawControls(c: Canvas) {
-                  // Move stick
-                  fillCircle(c, moveBaseX, moveBaseY, joyR, Color.argb(90, 255, 255, 255))
-                  fillCircle(c, moveBaseX + moveDX, moveBaseY + moveDY, 30f * s, Color.rgb(0, 210, 210))
-
-                  // Aim stick
-                  fillCircle(c, aimBaseX, aimBaseY, joyR, Color.argb(90, 255, 255, 255))
-                  fillCircle(c, aimBaseX + aimDX, aimBaseY + aimDY, 30f * s, Color.rgb(255, 140, 0))
-
-                  // Fire
-                  fillCircle(c, fireX, fireY, fireR, if (fireHeld) Color.rgb(255, 80, 80) else Color.rgb(210, 50, 50))
-                  drawText(c, "FIRE", fireX, fireY + 10f * s, 28f * s, Color.WHITE, true)
-
-                  // Run
-                  fillCircle(c, runX, runY, runR, if (sprinting) Color.rgb(255, 165, 0) else Color.argb(150, 100, 100, 100))
-                  drawText(c, "RUN", runX, runY + 7f * s, 20f * s, Color.WHITE, true)
-
-                  // Reload
-                  fillCircle(c, reloadX, reloadY, reloadR, Color.rgb(40, 110, 200))
-                  drawText(c, "R", reloadX, reloadY + 9f * s, 26f * s, Color.WHITE, true)
-
-                  // Weapon box
-                  fillRect(c, weaponRect, Color.argb(180, 40, 40, 50))
-                  val status = if (reloadTimer > 0f) "RELOADING..." else "${ammo[weapon]} / ${reserve[weapon]}"
-                  drawText(c, WEAPON_NAMES[weapon], weaponRect.left + 10f * s, weaponRect.top + 28f * s, 20f * s, Color.YELLOW)
-                  drawText(c, status, weaponRect.left + 10f * s, weaponRect.top + 56f * s, 20f * s, Color.WHITE)
-              }
-
-              private fun drawMenu(c: Canvas) {
-                  c.drawColor(Color.rgb(20, 20, 25))
-                  drawText(c, "ZOMBIE Z: SURVIVAL", screenW / 2f, screenH * 0.25f, 46f * s, Color.rgb(235, 130, 20), true)
-                  fillRect(c, startRect, Color.rgb(210, 50, 50))
-                  drawText(c, "START SURVIVAL", screenW / 2f, startRect.centerY() + 12f * s, 32f * s, Color.WHITE, true)
-                  drawText(
-                      c,
-                      "Left: move | Right: aim | FIRE shoot | R reload | Survive $MAX_WAVE waves",
-                      screenW / 2f, screenH * 0.85f, 20f * s, Color.LTGRAY, true
-                  )
-              }
-
-              private fun drawEnd(c: Canvas, title: String, color: Int) {
-                  c.drawColor(Color.BLACK)
-                  drawText(c, title, screenW / 2f, screenH * 0.4f, 48f * s, color, true)
-                  drawText(c, "Wave $wave   Kills $kills   Coins $coins", screenW / 2f, screenH * 0.5f, 26f * s, Color.WHITE, true)
-                  drawText(c, "Tap to return to menu", screenW / 2f, screenH * 0.6f, 22f * s, Color.LTGRAY, true)
-              }
-
-              // ---- touch (multi-touch) ----
-              private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float = hypot(x1 - x2, y1 - y2)
-
-              private fun applyStick(role: Int, x: Float, y: Float) {
-                  val bx = if (role == ROLE_MOVE) moveBaseX else aimBaseX
-                  val by = if (role == ROLE_MOVE) moveBaseY else aimBaseY
-                  var dx = x - bx
-                  var dy = y - by
-                  val d = hypot(dx, dy)
-                  if (d > joyR) {
-                      dx = dx / d * joyR
-                      dy = dy / d * joyR
-                  }
-                  if (role == ROLE_MOVE) {
-                      moveDX = dx
-                      moveDY = dy
-                  } else {
-                      aimDX = dx
-                      aimDY = dy
-                      if (d > 12f * s) {
-                          aimAngle = atan2(dy, dx)
-                          aimIdle = 0f
-                      }
-                  }
-              }
-
-              private fun onPointerDown(id: Int, x: Float, y: Float) {
-                  when (state) {
-                      STATE_MENU -> {
-                          if (startRect.contains(x, y)) startBattle()
-                      }
-                      STATE_PLAY -> {
-                          if (dist(x, y, fireX, fireY) <= fireR) {
-                              pointerRole[id] = ROLE_FIRE
-                              fireHeld = true
-                          } else if (dist(x, y, runX, runY) <= runR) {
-                              sprinting = !sprinting
-                          } else if (dist(x, y, reloadX, reloadY) <= reloadR) {
-                              startReload()
-                          } else if (weaponRect.contains(x, y)) {
-                              switchWeapon()
-                          } else if (dist(x, y, moveBaseX, moveBaseY) <= joyR + 60f * s) {
-                              pointerRole[id] = ROLE_MOVE
-                              applyStick(ROLE_MOVE, x, y)
-                          } else if (dist(x, y, aimBaseX, aimBaseY) <= joyR + 60f * s) {
-                              pointerRole[id] = ROLE_AIM
-                              applyStick(ROLE_AIM, x, y)
-                          }
-                      }
-                      else -> state = STATE_MENU
-                  }
-              }
-
-              private fun onPointerMove(id: Int, x: Float, y: Float) {
-                  val role = pointerRole[id] ?: return
-                  if (role == ROLE_MOVE || role == ROLE_AIM) applyStick(role, x, y)
-              }
-
-              private fun onPointerUp(id: Int) {
-                  when (pointerRole.remove(id)) {
-                      ROLE_MOVE -> { moveDX = 0f; moveDY = 0f }
-                      ROLE_AIM -> { aimDX = 0f; aimDY = 0f }
-                      ROLE_FIRE -> fireHeld = false
-                  }
+                  glView.onPause()
               }
 
               override fun onTouchEvent(event: MotionEvent): Boolean {
-                  synchronized(lock) {
-                      when (event.actionMasked) {
-                          MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                              val idx = event.actionIndex
-                              onPointerDown(event.getPointerId(idx), event.getX(idx), event.getY(idx))
-                          }
-                          MotionEvent.ACTION_MOVE -> {
-                              for (i in 0 until event.pointerCount) {
-                                  onPointerMove(event.getPointerId(i), event.getX(i), event.getY(i))
-                              }
-                          }
-                          MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                              onPointerUp(event.getPointerId(event.actionIndex))
-                          }
-                          MotionEvent.ACTION_CANCEL -> {
-                              pointerRole.clear()
-                              moveDX = 0f; moveDY = 0f
-                              aimDX = 0f; aimDY = 0f
-                              fireHeld = false
+                  val w = glView.width.toFloat()
+                  when (event.actionMasked) {
+                      MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                          val i = event.actionIndex
+                          renderer.touchDown(event.getPointerId(i), event.getX(i), event.getY(i), w)
+                      }
+                      MotionEvent.ACTION_MOVE -> {
+                          for (i in 0 until event.pointerCount) {
+                              renderer.touchMove(event.getPointerId(i), event.getX(i), event.getY(i))
                           }
                       }
+                      MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                          renderer.touchUp(event.getPointerId(event.actionIndex))
+                      }
+                      MotionEvent.ACTION_CANCEL -> renderer.touchCancel()
                   }
                   return true
               }
           }
           EOF
 
-          echo "[SUCCESS] Kotlin source files written."
+          cat > app/src/main/java/com/zombiez/game/GameRenderer.kt << 'EOF'
+          package com.zombiez.game
 
-      - name: Generate Assets via Separate Python Script
-        run: |
-          python3 generate_assets.py
+          import android.opengl.GLES20
+          import android.opengl.GLSurfaceView
+          import android.opengl.Matrix
+          import java.nio.ByteBuffer
+          import java.nio.ByteOrder
+          import java.nio.FloatBuffer
+          import javax.microedition.khronos.egl.EGLConfig
+          import javax.microedition.khronos.opengles.GL10
+          import kotlin.math.abs
+          import kotlin.math.cos
+          import kotlin.math.hypot
+          import kotlin.math.sin
 
-      - name: Generate Gradle Wrapper & Build APK
+          class Mesh(verts: FloatArray, normals: FloatArray) {
+              val count: Int = verts.size / 3
+              val pos: FloatBuffer = toBuffer(verts)
+              val nor: FloatBuffer = toBuffer(normals)
+
+              private fun toBuffer(a: FloatArray): FloatBuffer {
+                  val bb = ByteBuffer.allocateDirect(a.size * 4).order(ByteOrder.nativeOrder())
+                  val fb = bb.asFloatBuffer()
+                  fb.put(a)
+                  fb.position(0)
+                  return fb
+              }
+          }
+
+          class GameRenderer : GLSurfaceView.Renderer {
+
+              private val VERTEX_SHADER = """
+                  attribute vec3 aPos;
+                  attribute vec3 aNor;
+                  uniform mat4 uMVP;
+                  varying vec3 vN;
+                  void main() {
+                      vN = aNor;
+                      gl_Position = uMVP * vec4(aPos, 1.0);
+                  }
+              """.trimIndent()
+
+              private val FRAGMENT_SHADER = """
+                  precision mediump float;
+                  uniform vec3 uColor;
+                  varying vec3 vN;
+                  void main() {
+                      float l = max(dot(normalize(vN), normalize(vec3(0.4, 1.0, 0.3))), 0.0);
+                      float shade = 0.35 + 0.65 * l;
+                      gl_FragColor = vec4(uColor * shade, 1.0);
+                  }
+              """.trimIndent()
+
+              private val proj = FloatArray(16)
+              private val view = FloatArray(16)
+              private val model = FloatArray(16)
+              private val tmp = FloatArray(16)
+              private val mvp = FloatArray(16)
+
+              private var program = 0
+              private var aPos = 0
+              private var aNor = 0
+              private var uMVP = 0
+              private var uColor = 0
+
+              private lateinit var cube: Mesh
+              private lateinit var plane: Mesh
+
+              // Buildings: x, z, width, height, depth
+              private val buildings = arrayOf(
+                  floatArrayOf(-25f, -20f, 10f, 16f, 10f),
+                  floatArrayOf(20f, -30f, 12f, 22f, 8f),
+                  floatArrayOf(30f, 25f, 9f, 12f, 14f),
+                  floatArrayOf(-40f, 30f, 14f, 18f, 9f),
+                  floatArrayOf(5f, 45f, 16f, 26f, 12f),
+                  floatArrayOf(-10f, -55f, 8f, 10f, 8f)
+              )
+
+              // Building color palette. Wave-based change will use this later.
+              private val buildingColors = arrayOf(
+                  floatArrayOf(0.55f, 0.45f, 0.35f),
+                  floatArrayOf(0.45f, 0.5f, 0.6f),
+                  floatArrayOf(0.6f, 0.4f, 0.4f)
+              )
+              private var tint = 0
+
+              // Player state
+              private var px = 0f
+              private var pz = 0f
+              private var yaw = 0f
+              private val moveSpeed = 6f
+
+              // Touch state (protected by lock)
+              private val lock = Any()
+              private val touches = HashMap<Int, FloatArray>() // [side(0=move,1=look), originX, originY, lastX, lastY]
+              private var stickX = 0f
+              private var stickY = 0f
+              private var lookDelta = 0f
+              private var screenW = 1f
+
+              private var lastTime = 0L
+
+              // ---------- touch API (called from UI thread) ----------
+              fun touchDown(id: Int, x: Float, y: Float, w: Float) {
+                  synchronized(lock) {
+                      screenW = w
+                      val side = if (x < w / 2f) 0f else 1f
+                      touches[id] = floatArrayOf(side, x, y, x, y)
+                      if (side == 0f) {
+                          stickX = 0f
+                          stickY = 0f
+                      }
+                  }
+              }
+
+              fun touchMove(id: Int, x: Float, y: Float) {
+                  synchronized(lock) {
+                      val t = touches[id] ?: return
+                      if (t[0] == 0f) {
+                          stickX = ((x - t[1]) / 120f).coerceIn(-1f, 1f)
+                          stickY = ((y - t[2]) / 120f).coerceIn(-1f, 1f)
+                      } else {
+                          lookDelta += x - t[3]
+                      }
+                      t[3] = x
+                      t[4] = y
+                  }
+              }
+
+              fun touchUp(id: Int) {
+                  synchronized(lock) {
+                      val t = touches.remove(id) ?: return
+                      if (t[0] == 0f) {
+                          stickX = 0f
+                          stickY = 0f
+                      }
+                  }
+              }
+
+              fun touchCancel() {
+                  synchronized(lock) {
+                      touches.clear()
+                      stickX = 0f
+                      stickY = 0f
+                  }
+              }
+
+              // ---------- GL lifecycle ----------
+              override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+                  GLES20.glClearColor(0.55f, 0.8f, 1f, 1f)
+                  GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+
+                  val vs = compileShader(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER)
+                  val fs = compileShader(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER)
+                  program = GLES20.glCreateProgram()
+                  GLES20.glAttachShader(program, vs)
+                  GLES20.glAttachShader(program, fs)
+                  GLES20.glLinkProgram(program)
+
+                  aPos = GLES20.glGetAttribLocation(program, "aPos")
+                  aNor = GLES20.glGetAttribLocation(program, "aNor")
+                  uMVP = GLES20.glGetUniformLocation(program, "uMVP")
+                  uColor = GLES20.glGetUniformLocation(program, "uColor")
+
+                  cube = buildCube()
+                  plane = buildPlane()
+                  lastTime = System.nanoTime()
+              }
+
+              override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+                  GLES20.glViewport(0, 0, width, height)
+                  val aspect = width.toFloat() / height.toFloat()
+                  Matrix.perspectiveM(proj, 0, 60f, aspect, 0.1f, 300f)
+              }
+
+              override fun onDrawFrame(gl: GL10?) {
+                  val now = System.nanoTime()
+                  val dt = ((now - lastTime) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                  lastTime = now
+
+                  var sx = 0f
+                  var sy = 0f
+                  var look = 0f
+                  synchronized(lock) {
+                      sx = stickX
+                      sy = stickY
+                      look = lookDelta
+                      lookDelta = 0f
+                  }
+
+                  // Camera rotation from right-side drag
+                  yaw += look * 0.01f
+
+                  // Movement relative to camera direction
+                  if (hypot(sx, sy) > 0.12f) {
+                      val fx = sin(yaw)
+                      val fz = cos(yaw)
+                      val rx = cos(yaw)
+                      val rz = -sin(yaw)
+                      val forwardAmt = -sy
+                      val sideAmt = sx
+                      var dx = rx * sideAmt + fx * forwardAmt
+                      var dz = rz * sideAmt + fz * forwardAmt
+                      val len = hypot(dx, dz)
+                      if (len > 1f) {
+                          dx /= len
+                          dz /= len
+                      }
+                      val step = moveSpeed * dt
+                      val nx = (px + dx * step).coerceIn(-90f, 90f)
+                      if (!blocked(nx, pz)) px = nx
+                      val nz = (pz + dz * step).coerceIn(-90f, 90f)
+                      if (!blocked(px, nz)) pz = nz
+                  }
+
+                  // Third-person camera behind the player
+                  val camDist = 9f
+                  val camHeight = 4.5f
+                  val ex = px - sin(yaw) * camDist
+                  val ez = pz - cos(yaw) * camDist
+                  Matrix.setLookAtM(view, 0, ex, camHeight, ez, px, 1.2f, pz, 0f, 1f, 0f)
+
+                  GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+                  GLES20.glUseProgram(program)
+
+                  // Ground
+                  drawBox(plane, 0f, 0f, 0f, 200f, 1f, 200f, 0.25f, 0.55f, 0.25f)
+
+                  // Buildings
+                  val bc = buildingColors[tint]
+                  for (b in buildings) {
+                      drawBox(cube, b[0], b[3] / 2f, b[1], b[2], b[3], b[4], bc[0], bc[1], bc[2])
+                  }
+
+                  // Player: body and head
+                  drawBox(cube, px, 0.6f, pz, 0.8f, 1.2f, 0.6f, 0.2f, 0.4f, 0.9f)
+                  drawBox(cube, px, 1.5f, pz, 0.5f, 0.5f, 0.5f, 0.9f, 0.75f, 0.6f)
+              }
+
+              // ---------- helpers ----------
+              private fun blocked(x: Float, z: Float): Boolean {
+                  for (b in buildings) {
+                      if (abs(x - b[0]) < b[2] / 2f + 0.6f && abs(z - b[1]) < b[4] / 2f + 0.6f) return true
+                  }
+                  return false
+              }
+
+              private fun drawBox(
+                  mesh: Mesh,
+                  tx: Float, ty: Float, tz: Float,
+                  sx: Float, sy: Float, sz: Float,
+                  r: Float, g: Float, b: Float
+              ) {
+                  Matrix.setIdentityM(model, 0)
+                  Matrix.translateM(model, 0, tx, ty, tz)
+                  Matrix.scaleM(model, 0, sx, sy, sz)
+
+                  Matrix.multiplyMM(tmp, 0, view, 0, model, 0)
+                  Matrix.multiplyMM(mvp, 0, proj, 0, tmp, 0)
+
+                  GLES20.glUniformMatrix4fv(uMVP, 1, false, mvp, 0)
+                  GLES20.glUniform3f(uColor, r, g, b)
+
+                  GLES20.glEnableVertexAttribArray(aPos)
+                  GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, 0, mesh.pos)
+                  GLES20.glEnableVertexAttribArray(aNor)
+                  GLES20.glVertexAttribPointer(aNor, 3, GLES20.GL_FLOAT, false, 0, mesh.nor)
+
+                  GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, mesh.count)
+              }
+
+              private fun compileShader(type: Int, src: String): Int {
+                  val s = GLES20.glCreateShader(type)
+                  GLES20.glShaderSource(s, src)
+                  GLES20.glCompileShader(s)
+                  return s
+              }
+
+              // Unit cube centered at origin, size 1 (-0.5 .. 0.5)
+              private fun buildCube(): Mesh {
+                  val normals = arrayOf(
+                      floatArrayOf(1f, 0f, 0f), floatArrayOf(-1f, 0f, 0f),
+                      floatArrayOf(0f, 1f, 0f), floatArrayOf(0f, -1f, 0f),
+                      floatArrayOf(0f, 0f, 1f), floatArrayOf(0f, 0f, -1f)
+                  )
+                  val axesU = arrayOf(
+                      floatArrayOf(0f, 1f, 0f), floatArrayOf(0f, 1f, 0f),
+                      floatArrayOf(1f, 0f, 0f), floatArrayOf(1f, 0f, 0f),
+                      floatArrayOf(1f, 0f, 0f), floatArrayOf(1f, 0f, 0f)
+                  )
+                  val axesV = arrayOf(
+                      floatArrayOf(0f, 0f, 1f), floatArrayOf(0f, 0f, 1f),
+                      floatArrayOf(0f, 0f, 1f), floatArrayOf(0f, 0f, 1f),
+                      floatArrayOf(0f, 1f, 0f), floatArrayOf(0f, 1f, 0f)
+                  )
+                  val corners = arrayOf(
+                      floatArrayOf(-1f, -1f), floatArrayOf(1f, -1f),
+                      floatArrayOf(1f, 1f), floatArrayOf(-1f, 1f)
+                  )
+                  val order = intArrayOf(0, 1, 2, 0, 2, 3)
+
+                  val pos = ArrayList<Float>()
+                  val nor = ArrayList<Float>()
+                  for (f in 0 until 6) {
+                      val n = normals[f]
+                      val u = axesU[f]
+                      val v = axesV[f]
+                      for (k in order) {
+                          val s1 = corners[k][0] * 0.5f
+                          val s2 = corners[k][1] * 0.5f
+                          pos.add(n[0] * 0.5f + u[0] * s1 + v[0] * s2)
+                          pos.add(n[1] * 0.5f + u[1] * s1 + v[1] * s2)
+                          pos.add(n[2] * 0.5f + u[2] * s1 + v[2] * s2)
+                          nor.add(n[0]); nor.add(n[1]); nor.add(n[2])
+                      }
+                  }
+                  return Mesh(pos.toFloatArray(), nor.toFloatArray())
+              }
+
+              // Flat ground, unit size on XZ, normal pointing up
+              private fun buildPlane(): Mesh {
+                  val pos = floatArrayOf(
+                      -0.5f, 0f, -0.5f,
+                       0.5f, 0f, -0.5f,
+                       0.5f, 0f,  0.5f,
+                      -0.5f, 0f, -0.5f,
+                       0.5f, 0f,  0.5f,
+                      -0.5f, 0f,  0.5f
+                  )
+                  val nor = FloatArray(18)
+                  for (i in 0 until 6) {
+                      nor[i * 3] = 0f
+                      nor[i * 3 + 1] = 1f
+                      nor[i * 3 + 2] = 0f
+                  }
+                  return Mesh(pos, nor)
+              }
+          }
+          EOF
+
+          echo "[SUCCESS] 3D test source files written."
+
+      - name: Build APK
         run: |
           gradle wrapper --gradle-version 8.2
           chmod +x gradlew
@@ -932,6 +538,6 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ZombieZ-Survival-APK
+          name: ZombieZ-3D-Test-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
