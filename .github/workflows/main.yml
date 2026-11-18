@@ -192,7 +192,7 @@ jobs:
           with open("app/src/main/java/com/zombiez/game/MainActivity.kt", "w", encoding="utf-8") as f:
               f.write(main_code)
 
-          # 8. GameView.kt (Advanced Controls, Aim Laser, Bullets, Aura Zombies, 20000 Map)
+          # 8. GameView.kt
           game_code = textwrap.dedent("""\
               package com.zombiez.game
 
@@ -220,7 +220,6 @@ jobs:
                   private var gameState = 0
                   private var playerCoins = 1000
 
-                  // 20000x20000 Massive Map Coordinates
                   private var playerX = 10000f
                   private var playerY = 10000f
                   private var playerHp = 200f
@@ -229,12 +228,10 @@ jobs:
                   private var sprintSpeed = 7.0f
                   private var isSprinting = false
 
-                  // Aim Angle & Weapons
                   private var aimAngle = 0f
-                  private var currentWeaponIndex = 0 // 0: Pistol, 1: Assault Rifle
+                  private var currentWeaponIndex = 0
                   private val weaponNames = arrayOf("PISTOL (9mm)", "ASSAULT RIFLE (5.56)")
 
-                  // Movement Joystick
                   private var joyActive = false
                   private var joyX = 180f
                   private var joyY = 540f
@@ -242,22 +239,17 @@ jobs:
                   private var joyKnobY = 540f
                   private val joyRadius = 75f
 
-                  // Sprint Button Box
                   private var sprintBtnX = 180f
                   private var sprintBtnY = 410f
                   private val sprintBtnRadius = 45f
 
-                  // Weapon Switch Button Box (Top Right)
                   private var switchBtnX = 1120f
                   private var switchBtnY = 60f
 
-                  // Bitmaps for Sprites
                   private var playerBitmap: Bitmap? = null
                   private var zombieBitmap: Bitmap? = null
 
-                  // Zombie Class with Aura & Slow Speeds
                   private class Zombie(var x: Float, var y: Float, val type: Int) {
-                      // Type 1: Walker (Slow), Type 2: Axeman (Medium, Red Aura), Type 3: Tank Boss (Very Slow, Green Aura)
                       var hp: Float = if (type == 1) 100f else if (type == 2) 150f else 300f
                       val maxHp: Float = hp
                       val speed: Float = if (type == 1) 1.2f else if (type == 2) 1.8f else 0.9f
@@ -265,7 +257,6 @@ jobs:
                   }
                   private val zombies = mutableListOf<Zombie>()
 
-                  // Bullet Class
                   private class Bullet(var x: Float, var y: Float, val vx: Float, val vy: Float) {
                       var distanceTraveled = 0f
                       val maxRange = 900f
@@ -328,7 +319,6 @@ jobs:
                       zoneRadius = 9500f
                       zombies.clear()
                       bullets.clear()
-                      // Spawn 35 aura zombies across the 20000x20000 map
                       for (i in 0 until 35) {
                           zombies.add(Zombie(Random.nextFloat() * 19000f + 500f, Random.nextFloat() * 19000f + 500f, Random.nextInt(1, 4)))
                       }
@@ -356,7 +346,6 @@ jobs:
 
                   private fun update() {
                       if (gameState == 3) {
-                          // Movement via Joystick & Sprint
                           if (joyActive) {
                               val dx = joyKnobX - joyX
                               val dy = joyKnobY - joyY
@@ -371,7 +360,6 @@ jobs:
                               }
                           }
 
-                          // Update Bullets
                           val bulletIter = bullets.iterator()
                           while (bulletIter.hasNext()) {
                               val b = bulletIter.next()
@@ -379,7 +367,6 @@ jobs:
                               b.y += b.vy
                               b.distanceTraveled += hypot(b.vx, b.vy)
 
-                              // Check hit against zombies
                               var hit = false
                               for (z in zombies) {
                                   if (hypot(b.x - z.x, b.y - z.y) < z.radius + 15f) {
@@ -398,13 +385,11 @@ jobs:
                               }
                           }
 
-                          // Update Zombies (Slow speed + Aura effects)
                           for (z in zombies) {
                               val zdx = playerX - z.x
                               val zdy = playerY - z.y
                               val zDist = hypot(zdx, zdy)
 
-                              // Tank Boss Green Aura Damage over time if close
                               if (z.type == 3 && zDist < 180f) {
                                   playerHp -= 0.2f
                               }
@@ -413,7 +398,6 @@ jobs:
                                   z.x += (zdx / zDist) * z.speed
                                   z.y += (zdy / zDist) * z.speed
                               } else {
-                                  // Attack damage based on zombie type
                                   val damage = if (z.type == 3) 1.2f else if (z.type == 2) 0.8f else 0.4f
                                   playerHp -= damage
                                   if (playerHp <= 0) gameState = 4
@@ -439,27 +423,23 @@ jobs:
                       canvas.save()
                       canvas.translate(-camX, -camY)
 
-                      // Pochinki Town Complex
                       paint.color = Color.rgb(80, 50, 35)
                       canvas.drawRect(9200f, 9200f, 10800f, 10800f, paint)
                       paint.color = Color.rgb(160, 45, 45)
                       canvas.drawRect(9400f, 9400f, 10600f, 10600f, paint)
 
-                      // Blue Zone
                       paint.style = Paint.Style.STROKE
                       paint.strokeWidth = 12f
                       paint.color = Color.rgb(20, 90, 255)
                       canvas.drawCircle(10000f, 10000f, zoneRadius, paint)
                       paint.style = Paint.Style.FILL
 
-                      // Draw Zombies with Aura Rings
                       for (z in zombies) {
-                          // Aura drawing based on type
                           if (z.type == 2) {
-                              paint.color = Color.argb(80, 255, 50, 50) // Axeman Red Aura
+                              paint.color = Color.argb(80, 255, 50, 50)
                               canvas.drawCircle(z.x, z.y, 45f, paint)
                           } else if (z.type == 3) {
-                              paint.color = Color.argb(80, 50, 255, 50) // Tank Boss Green Aura
+                              paint.color = Color.argb(80, 50, 255, 50)
                               canvas.drawCircle(z.x, z.y, 70f, paint)
                           }
 
@@ -470,7 +450,6 @@ jobs:
                               canvas.drawCircle(z.x, z.y, z.radius, paint)
                           }
 
-                          // Zombie HP Bar
                           paint.color = Color.RED
                           canvas.drawRect(z.x - 25f, z.y - 45f, z.x + 25f, z.y - 40f, paint)
                           paint.color = Color.YELLOW
@@ -478,13 +457,11 @@ jobs:
                           canvas.drawRect(z.x - 25f, z.y - 45f, z.x - 25f + fill, z.y - 40f, paint)
                       }
 
-                      // Draw Bullets
                       paint.color = Color.YELLOW
                       for (b in bullets) {
                           canvas.drawCircle(b.x, b.y, 6f, paint)
                       }
 
-                      // Draw Player & Aim Arrow / Laser
                       if (playerBitmap != null) {
                           canvas.drawBitmap(playerBitmap!!, playerX - 32f, playerY - 32f, paint)
                       } else {
@@ -492,7 +469,6 @@ jobs:
                           canvas.drawCircle(playerX, playerY, 25f, paint)
                       }
 
-                      // Directional Aim Arrow / Laser Line
                       paint.strokeWidth = 4f
                       var isAimedAtZombie = false
                       for (z in zombies) {
@@ -508,7 +484,6 @@ jobs:
 
                       canvas.restore()
 
-                      // HUD UI Controls (Free Fire Style)
                       when (gameState) {
                           0 -> {
                               canvas.drawColor(Color.rgb(20, 20, 25))
@@ -522,34 +497,29 @@ jobs:
                               canvas.drawText("START SURVIVAL", screenWidth / 2 - 130f, 375f, paint)
                           }
                           3 -> {
-                              // Movement Joystick Base & Knob
                               paint.color = Color.argb(100, 255, 255, 255)
                               canvas.drawCircle(joyX, joyY, joyRadius, paint)
                               paint.color = Color.rgb(0, 210, 210)
                               canvas.drawCircle(joyKnobX, joyKnobY, 30f, paint)
 
-                              // Sprint Button (Above Joystick)
                               paint.color = if (isSprinting) Color.rgb(255, 165, 0) else Color.argb(150, 100, 100, 100)
                               canvas.drawCircle(sprintBtnX, sprintBtnY, sprintBtnRadius, paint)
                               paint.color = Color.WHITE
                               paint.textSize = 20f
                               canvas.drawText("RUN", sprintBtnX - 22f, sprintBtnY + 7f, paint)
 
-                              // Fire Button (Bottom Right)
                               paint.color = Color.rgb(210, 50, 50)
                               canvas.drawCircle(screenWidth - 150f, screenHeight - 150f, 75f, paint)
                               paint.color = Color.WHITE
                               paint.textSize = 28f
                               canvas.drawText("FIRE", screenWidth - 180f, screenHeight - 140f, paint)
 
-                              // Weapon Switch Button (Top Right)
                               paint.color = Color.argb(180, 40, 40, 50)
                               canvas.drawRect(switchBtnX - 110f, switchBtnY - 30f, switchBtnX + 30f, switchBtnY + 30f, paint)
                               paint.color = Color.YELLOW
                               paint.textSize = 22f
                               canvas.drawText(weaponNames[currentWeaponIndex], switchBtnX - 100f, switchBtnY + 8f, paint)
 
-                              // Status Info
                               paint.textSize = 24f
                               paint.color = Color.YELLOW
                               canvas.drawText("HP: ${playerHp.toInt()} | Zombies: ${zombies.size} | Coins: $playerCoins🪙", 40f, 50f, paint)
@@ -574,22 +544,18 @@ jobs:
                               when (gameState) {
                                   0 -> startBattle()
                                   3 -> {
-                                      // Check Sprint Button
                                       if (hypot(x - sprintBtnX, y - sprintBtnY) <= sprintBtnRadius) {
                                           isSprinting = !isSprinting
                                       }
-                                      // Check Weapon Switch Button
                                       else if (x >= switchBtnX - 110f && x <= switchBtnX + 30f && y >= switchBtnY - 30f && y <= switchBtnY + 30f) {
                                           currentWeaponIndex = (currentWeaponIndex + 1) % weaponNames.size
                                       }
-                                      // Check Fire Button
                                       else if (hypot(x - (screenWidth - 150f), y - (screenHeight - 150f)) <= 75f) {
                                           val speed = 18f
                                           val vx = cos(aimAngle) * speed
                                           val vy = sin(aimAngle) * speed
                                           bullets.add(Bullet(playerX, playerY, vx, vy))
                                       }
-                                      // Check Movement Joystick
                                       else if (hypot(x - joyX, y - joyY) <= joyRadius + 50f) {
                                           joyActive = true
                                           joyKnobX = x
@@ -626,39 +592,12 @@ jobs:
           with open("app/src/main/java/com/zombiez/game/GameView.kt", "w", encoding="utf-8") as f:
               f.write(game_code)
 
-          print("[SUCCESS] Free Fire controls, aiming laser, and aura zombies implemented successfully!")
+          print("[SUCCESS] GameView generated successfully!")
           EOF
 
-      - name: Generate Assets via Python
+      - name: Generate Assets via Separate Python Script
         run: |
-          python3 - << 'EOF'
-          from PIL import Image, ImageDraw
-          import os
-
-          os.makedirs("app/src/main/res/drawable", exist_ok=True)
-
-          # 1. App Icon (512x512)
-          icon = Image.new("RGB", (512, 512), color=(20, 25, 30))
-          d = ImageDraw.Draw(icon)
-          d.rectangle([100, 100, 412, 412], fill=(210, 50, 50))
-          d.text((160, 230), "Z-Z", fill=(255, 255, 255))
-          icon.save("app/src/main/res/drawable/icon.png")
-
-          # 2. Player Sprite
-          player = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-          pd = ImageDraw.Draw(player)
-          pd.ellipse([16, 16, 48, 48], fill=(40, 90, 220))
-          pd.rectangle([28, 0, 36, 20], fill=(255, 255, 255))
-          player.save("app/src/main/res/drawable/player.png")
-
-          # 3. Zombie Sprite
-          zombie = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-          zd = ImageDraw.Draw(zombie)
-          zd.ellipse([12, 12, 52, 52], fill=(34, 139, 34))
-          zd.ellipse([24, 24, 40, 40], fill=(210, 50, 50))
-          zombie.save("app/src/main/res/drawable/zombie.png")
-          print("[SUCCESS] Sprites generated successfully!")
-          EOF
+          python3 generate_assets.py
 
       - name: Generate Gradle Wrapper & Build APK
         run: |
@@ -672,3 +611,4 @@ jobs:
           name: ZombieZ-Erangel-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
