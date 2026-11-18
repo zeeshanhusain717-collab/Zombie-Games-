@@ -424,7 +424,7 @@ jobs:
                               try {
                                   synchronized(lock) {
                                       update(dt)
-                                      draw(c)
+                                      drawFrame(c)
                                   }
                               } finally {
                                   holder.unlockCanvasAndPost(c)
@@ -663,7 +663,7 @@ jobs:
               }
 
               // ---- draw ----
-              private fun draw(c: Canvas) {
+              private fun drawFrame(c: Canvas) {
                   when (state) {
                       STATE_MENU -> { drawMenu(c); return }
                       STATE_DEAD -> { drawEnd(c, "YOU DIED", Color.RED); return }
