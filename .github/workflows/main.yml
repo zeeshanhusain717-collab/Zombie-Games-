@@ -1,4 +1,4 @@
-name: Auto Build Erangel Zombie APK
+name: Auto Build Zombie Z Survival APK
 
 on:
   push:
@@ -29,571 +29,895 @@ jobs:
         with:
           gradle-version: '8.2'
 
-      - name: Deep Scan & Advanced Free Fire Controls + Aura Zombies Implementation
+      - name: Write Game Source Files
         run: |
-          python3 - << 'EOF'
-          import os
-          import textwrap
+          mkdir -p app/src/main/java/com/zombiez/game
+          mkdir -p app/src/main/res/drawable
 
-          print("[DEEP SCAN] Implementing Free Fire controls, aim arrows, bullet projectiles, and aura zombies...")
+          cat > gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
 
-          # 1. Create directories
-          os.makedirs("app/src/main/java/com/zombiez/game", exist_ok=True)
-          os.makedirs("app/src/main/res/drawable", exist_ok=True)
+          cat > build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application' version '8.1.1' apply false
+              id 'org.jetbrains.kotlin.android' version '1.9.0' apply false
+          }
 
-          # 2. gradle.properties
-          with open("gradle.properties", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  org.gradle.jvmargs=-Xmx2048M -Dfile.encoding=UTF-8
-                  android.useAndroidX=true
-                  android.enableJetifier=true
-              """))
+          task clean(type: Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
 
-          # 3. Root build.gradle
-          with open("build.gradle", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  plugins {
-                      id 'com.android.application' version '8.1.1' apply false
-                      id 'org.jetbrains.kotlin.android' version '1.9.0' apply false
-                  }
+          cat > settings.gradle << 'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
 
-                  task clean(type: Delete) {
-                      delete rootProject.buildDir
-                  }
-              """))
+          rootProject.name = "ZombieZ-Survival"
+          include ':app'
+          EOF
 
-          # 4. settings.gradle
-          with open("settings.gradle", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  pluginManagement {
-                      repositories {
-                          google()
-                          mavenCentral()
-                          gradlePluginPortal()
-                      }
-                  }
-                  dependencyResolutionManagement {
-                      repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-                      repositories {
-                          google()
-                          mavenCentral()
-                      }
-                  }
+          cat > app/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
 
-                  rootProject.name = "ZombieZ-Erangel"
-                  include ':app'
-              """))
+          android {
+              namespace 'com.zombiez.game'
+              compileSdk 34
 
-          # 5. app/build.gradle
-          with open("app/build.gradle", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  plugins {
-                      id 'com.android.application'
-                      id 'org.jetbrains.kotlin.android'
-                  }
+              defaultConfig {
+                  applicationId "com.zombiez.game"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 2
+                  versionName "1.1"
+              }
 
-                  android {
-                      namespace 'com.zombiez.game'
-                      compileSdk 33
-
-                      defaultConfig {
-                          applicationId "com.zombiez.game"
-                          minSdk 21
-                          targetSdk 33
-                          versionCode 1
-                          versionName "1.0"
-                      }
-
-                      buildTypes {
-                          release {
-                              minifyEnabled false
-                              proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-                          }
-                      }
-
-                      compileOptions {
-                          sourceCompatibility JavaVersion.VERSION_1_8
-                          targetCompatibility JavaVersion.VERSION_1_8
-                      }
-
-                      kotlinOptions {
-                          jvmTarget = '1.8'
-                      }
-                  }
-
-                  dependencies {
-                      // Pure native implementation
-                  }
-              """))
-
-          # 6. AndroidManifest.xml
-          with open("app/src/main/AndroidManifest.xml", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent("""\
-                  <?xml version="1.0" encoding="utf-8"?>
-                  <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-                      <application
-                          android:allowBackup="true"
-                          android:icon="@drawable/icon"
-                          android:label="Zombie Z Erangel"
-                          android:roundIcon="@drawable/icon"
-                          android:supportsRtl="true"
-                          android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-
-                          <activity
-                              android:name=".MainActivity"
-                              android:exported="true"
-                              android:screenOrientation="landscape">
-
-                              <intent-filter>
-                                  <action android:name="android.intent.action.MAIN" />
-                                  <category android:name="android.intent.category.LAUNCHER" />
-                              </intent-filter>
-
-                          </activity>
-                      </application>
-                  </manifest>
-              """))
-
-          # 7. MainActivity.kt
-          main_code = textwrap.dedent("""\
-              package com.zombiez.game
-
-              import android.app.Activity
-              import android.os.Bundle
-              import android.view.Window
-              import android.view.WindowManager
-
-              class MainActivity : Activity() {
-                  private lateinit var gameView: GameView
-
-                  override fun onCreate(savedInstanceState: Bundle?) {
-                      super.onCreate(savedInstanceState)
-                      requestWindowFeature(Window.FEATURE_NO_TITLE)
-                      window.setFlags(
-                          WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                          WindowManager.LayoutParams.FLAG_FULLSCREEN
-                      )
-                      gameView = GameView(this)
-                      setContentView(gameView)
-                  }
-
-                  override fun onResume() {
-                      super.onResume()
-                      gameView.resume()
-                  }
-
-                  override fun onPause() {
-                      super.onPause()
-                      gameView.pause()
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
                   }
               }
-          """)
-          with open("app/src/main/java/com/zombiez/game/MainActivity.kt", "w", encoding="utf-8") as f:
-              f.write(main_code)
 
-          # 8. GameView.kt
-          game_code = textwrap.dedent("""\
-              package com.zombiez.game
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
 
-              import android.content.Context
-              import android.graphics.Bitmap
-              import android.graphics.BitmapFactory
-              import android.graphics.Canvas
-              import android.graphics.Color
-              import android.graphics.Paint
-              import android.view.MotionEvent
-              import android.view.SurfaceHolder
-              import android.view.SurfaceView
-              import kotlin.math.*
-              import kotlin.random.Random
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+          }
 
-              class GameView(context: Context) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
-                  private var thread: Thread? = null
-                  private var isPlaying = false
-                  private lateinit var canvas: Canvas
-                  private val paint = Paint()
+          dependencies {
+              // Pure native implementation, no external libraries
+          }
+          EOF
 
-                  private var screenWidth = 1280f
-                  private var screenHeight = 720f
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-                  private var gameState = 0
-                  private var playerCoins = 1000
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/icon"
+                  android:label="Zombie Z Survival"
+                  android:roundIcon="@drawable/icon"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
-                  private var playerX = 10000f
-                  private var playerY = 10000f
-                  private var playerHp = 200f
-                  private var maxPlayerHp = 200f
-                  private var walkSpeed = 3.5f
-                  private var sprintSpeed = 7.0f
-                  private var isSprinting = false
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|keyboardHidden|screenSize"
+                      android:screenOrientation="landscape">
 
-                  private var aimAngle = 0f
-                  private var currentWeaponIndex = 0
-                  private val weaponNames = arrayOf("PISTOL (9mm)", "ASSAULT RIFLE (5.56)")
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
 
-                  private var joyActive = false
-                  private var joyX = 180f
-                  private var joyY = 540f
-                  private var joyKnobX = 180f
-                  private var joyKnobY = 540f
-                  private val joyRadius = 75f
+                  </activity>
+              </application>
+          </manifest>
+          EOF
 
-                  private var sprintBtnX = 180f
-                  private var sprintBtnY = 410f
-                  private val sprintBtnRadius = 45f
+          cat > app/src/main/java/com/zombiez/game/MainActivity.kt << 'EOF'
+          package com.zombiez.game
 
-                  private var switchBtnX = 1120f
-                  private var switchBtnY = 60f
+          import android.app.Activity
+          import android.os.Bundle
+          import android.view.Window
+          import android.view.WindowManager
 
-                  private var playerBitmap: Bitmap? = null
-                  private var zombieBitmap: Bitmap? = null
+          class MainActivity : Activity() {
+              private lateinit var gameView: GameView
 
-                  private class Zombie(var x: Float, var y: Float, val type: Int) {
-                      var hp: Float = if (type == 1) 100f else if (type == 2) 150f else 300f
-                      val maxHp: Float = hp
-                      val speed: Float = if (type == 1) 1.2f else if (type == 2) 1.8f else 0.9f
-                      val radius: Float = if (type == 3) 30f else 20f
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  requestWindowFeature(Window.FEATURE_NO_TITLE)
+                  window.setFlags(
+                      WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                      WindowManager.LayoutParams.FLAG_FULLSCREEN
+                  )
+                  gameView = GameView(this)
+                  setContentView(gameView)
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  gameView.resume()
+              }
+
+              override fun onPause() {
+                  super.onPause()
+                  gameView.pause()
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/zombiez/game/GameView.kt << 'EOF'
+          package com.zombiez.game
+
+          import android.content.Context
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Canvas
+          import android.graphics.Color
+          import android.graphics.Paint
+          import android.graphics.RectF
+          import android.view.MotionEvent
+          import android.view.SurfaceHolder
+          import android.view.SurfaceView
+          import kotlin.math.*
+          import kotlin.random.Random
+
+          class GameView(context: Context) : SurfaceView(context), Runnable, SurfaceHolder.Callback {
+
+              companion object {
+                  const val STATE_MENU = 0
+                  const val STATE_PLAY = 1
+                  const val STATE_DEAD = 2
+                  const val STATE_WON = 3
+
+                  const val WORLD = 20000f
+                  const val CENTER = 10000f
+                  const val PLAYER_R = 22f
+                  const val MAX_WAVE = 10
+
+                  const val ROLE_MOVE = 1
+                  const val ROLE_AIM = 2
+                  const val ROLE_FIRE = 3
+
+                  // Zombie kinds: 0 walker, 1 axeman, 2 buckethead, 3 mutant, 4 runner
+                  val KIND_HP = floatArrayOf(100f, 180f, 300f, 260f, 70f)
+                  val KIND_SPEED = floatArrayOf(70f, 80f, 55f, 90f, 170f)
+                  val KIND_DPS = floatArrayOf(6f, 10f, 14f, 12f, 5f)
+                  val KIND_RADIUS = floatArrayOf(22f, 26f, 30f, 28f, 18f)
+                  val KIND_COLOR = intArrayOf(
+                      Color.rgb(50, 140, 50),
+                      Color.rgb(180, 90, 30),
+                      Color.rgb(60, 120, 190),
+                      Color.rgb(100, 50, 150),
+                      Color.rgb(180, 50, 50)
+                  )
+
+                  val WEAPON_NAMES = arrayOf("PISTOL (9mm)", "RIFLE (5.56)")
+                  val MAG = intArrayOf(12, 30)
+                  val RESERVE_START = intArrayOf(96, 180)
+                  val FIRE_DELAY = floatArrayOf(0.25f, 0.1f)
+                  val DAMAGE = floatArrayOf(35f, 60f)
+                  val RELOAD_TIME = floatArrayOf(1.8f, 2.4f)
+              }
+
+              private class Zombie(var x: Float, var y: Float, val kind: Int) {
+                  var hp: Float = KIND_HP[kind]
+                  val maxHp: Float = KIND_HP[kind]
+                  val radius: Float = KIND_RADIUS[kind]
+                  val speed: Float = KIND_SPEED[kind]
+              }
+
+              private class Bullet(var x: Float, var y: Float, val vx: Float, val vy: Float) {
+                  var travel = 0f
+              }
+
+              // ---- thread and drawing ----
+              private val lock = Any()
+              private var thread: Thread? = null
+              @Volatile private var running = false
+              private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+              private val startRect = RectF()
+              private val weaponRect = RectF()
+
+              // ---- screen layout (set in layout()) ----
+              private var screenW = 1280f
+              private var screenH = 720f
+              private var s = 1f
+              private var joyR = 75f
+              private var moveBaseX = 0f
+              private var moveBaseY = 0f
+              private var aimBaseX = 0f
+              private var aimBaseY = 0f
+              private var fireX = 0f
+              private var fireY = 0f
+              private var fireR = 75f
+              private var runX = 0f
+              private var runY = 0f
+              private var runR = 45f
+              private var reloadX = 0f
+              private var reloadY = 0f
+              private var reloadR = 45f
+
+              // ---- touch state (multi-touch safe) ----
+              private val pointerRole = HashMap<Int, Int>()
+              private var moveDX = 0f
+              private var moveDY = 0f
+              private var aimDX = 0f
+              private var aimDY = 0f
+              private var fireHeld = false
+              private var aimIdle = 0f
+
+              // ---- game state ----
+              private var state = STATE_MENU
+              private var coins = 1000
+              private var kills = 0
+              private var wave = 0
+              private var spawnLeft = 0
+              private var spawnTimer = 0f
+              private var banner = 0f
+              private var zoneRadius = 9500f
+              private var zoneTarget = 9500f
+
+              // ---- player ----
+              private var px = CENTER
+              private var py = CENTER
+              private var hp = 200f
+              private val maxHp = 200f
+              private var aimAngle = 0f
+              private var sprinting = false
+              private var weapon = 0
+              private val ammo = intArrayOf(MAG[0], MAG[1])
+              private val reserve = intArrayOf(RESERVE_START[0], RESERVE_START[1])
+              private var fireTimer = 0f
+              private var reloadTimer = 0f
+
+              private val zombies = mutableListOf<Zombie>()
+              private val bullets = mutableListOf<Bullet>()
+
+              // ---- world ----
+              private val obstacles = ArrayList<RectF>()
+              private val trees = ArrayList<FloatArray>()
+
+              // ---- sprites ----
+              private var playerBitmap: Bitmap? = null
+              private val sprites = arrayOfNulls<Bitmap>(5)
+
+              init {
+                  holder.addCallback(this)
+                  isFocusable = true
+
+                  val res = context.resources
+                  val pkg = context.packageName
+                  playerBitmap = loadSprite(res, pkg, "player")
+                  val names = arrayOf("zombie_1", "zombie_2", "zombie_3", "zombie_4", "zombie_5")
+                  for (i in names.indices) {
+                      sprites[i] = loadSprite(res, pkg, names[i])
                   }
-                  private val zombies = mutableListOf<Zombie>()
 
-                  private class Bullet(var x: Float, var y: Float, val vx: Float, val vy: Float) {
-                      var distanceTraveled = 0f
-                      val maxRange = 900f
+                  buildWorld()
+                  layout(screenW, screenH)
+              }
+
+              private fun loadSprite(res: android.content.res.Resources, pkg: String, name: String): Bitmap? {
+                  val id = res.getIdentifier(name, "drawable", pkg)
+                  return if (id != 0) BitmapFactory.decodeResource(res, id) else null
+              }
+
+              private fun buildWorld() {
+                  val rng = Random(42)
+                  repeat(45) {
+                      val w = 160f + rng.nextFloat() * 160f
+                      val h = 120f + rng.nextFloat() * 140f
+                      val x = 300f + rng.nextFloat() * (WORLD - 600f - w)
+                      val y = 300f + rng.nextFloat() * (WORLD - 600f - h)
+                      val r = RectF(x, y, x + w, y + h)
+                      if (hypot(r.centerX() - CENTER, r.centerY() - CENTER) > 900f) obstacles.add(r)
                   }
-                  private val bullets = mutableListOf<Bullet>()
-
-                  private var zoneRadius = 9500f
-
-                  init {
-                      holder.addCallback(this)
-                      isFocusable = true
-                      try {
-                          val pId = context.resources.getIdentifier("player", "drawable", context.packageName)
-                          val zId = context.resources.getIdentifier("zombie", "drawable", context.packageName)
-                          if (pId != 0) playerBitmap = BitmapFactory.decodeResource(context.resources, pId)
-                          if (zId != 0) zombieBitmap = BitmapFactory.decodeResource(context.resources, zId)
-                      } catch (e: Exception) {}
+                  repeat(140) {
+                      trees.add(floatArrayOf(
+                          300f + rng.nextFloat() * (WORLD - 600f),
+                          300f + rng.nextFloat() * (WORLD - 600f),
+                          18f + rng.nextFloat() * 12f
+                      ))
                   }
+              }
 
-                  override fun surfaceCreated(holder: SurfaceHolder) {
-                      isPlaying = true
-                      thread = Thread(this)
-                      thread?.start()
-                  }
+              private fun layout(w: Float, h: Float) {
+                  screenW = w
+                  screenH = h
+                  s = h / 720f
+                  joyR = 75f * s
 
-                  override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                      screenWidth = width.toFloat()
-                      screenHeight = height.toFloat()
-                      joyY = screenHeight - 160f
-                      joyX = 180f
-                      joyKnobX = joyX
-                      joyKnobY = joyY
-                      sprintBtnX = 180f
-                      sprintBtnY = joyY - 130f
-                      switchBtnX = screenWidth - 160f
-                      switchBtnY = 60f
-                  }
+                  moveBaseX = 150f * s
+                  moveBaseY = h - 150f * s
+                  aimBaseX = w - 330f * s
+                  aimBaseY = h - 150f * s
 
-                  override fun surfaceDestroyed(holder: SurfaceHolder) {
-                      isPlaying = false
-                      try { thread?.join() } catch (e: Exception) {}
-                  }
+                  fireX = w - 150f * s
+                  fireY = h - 150f * s
+                  fireR = 75f * s
 
-                  fun resume() {
-                      isPlaying = true
-                      thread = Thread(this)
-                      thread?.start()
-                  }
+                  runX = moveBaseX
+                  runY = moveBaseY - 130f * s
+                  runR = 45f * s
 
-                  fun pause() {
-                      isPlaying = false
-                      try { thread?.join() } catch (e: Exception) {}
-                  }
+                  reloadX = fireX
+                  reloadY = fireY - 170f * s
+                  reloadR = 45f * s
 
-                  private fun startBattle() {
-                      gameState = 3
-                      playerX = 10000f
-                      playerY = 10000f
-                      playerHp = maxPlayerHp
-                      zoneRadius = 9500f
-                      zombies.clear()
-                      bullets.clear()
-                      for (i in 0 until 35) {
-                          zombies.add(Zombie(Random.nextFloat() * 19000f + 500f, Random.nextFloat() * 19000f + 500f, Random.nextInt(1, 4)))
-                      }
-                  }
+                  weaponRect.set(w - 250f * s, 20f * s, w - 20f * s, 84f * s)
+                  startRect.set(w / 2f - 170f * s, h / 2f - 20f * s, w / 2f + 170f * s, h / 2f + 70f * s)
+              }
 
-                  override fun run() {
-                      val targetTime = 1000000000L / 60
-                      while (isPlaying) {
-                          val now = System.nanoTime()
-                          if (holder.surface.isValid) {
-                              canvas = holder.lockCanvas()
-                              synchronized(holder) {
-                                  update()
-                                  drawGame(canvas)
-                              }
-                              holder.unlockCanvasAndPost(canvas)
-                          }
-                          val elapsed = System.nanoTime() - now
-                          val waitTime = (targetTime - elapsed) / 1000000L
-                          if (waitTime > 0) {
-                              try { Thread.sleep(waitTime) } catch (e: Exception) {}
-                          }
-                      }
-                  }
+              // ---- SurfaceHolder callbacks ----
+              override fun surfaceCreated(holder: SurfaceHolder) {
+                  startLoop()
+              }
 
-                  private fun update() {
-                      if (gameState == 3) {
-                          if (joyActive) {
-                              val dx = joyKnobX - joyX
-                              val dy = joyKnobY - joyY
-                              val dist = hypot(dx, dy)
-                              if (dist > 5f) {
-                                  val currentSpeed = if (isSprinting) sprintSpeed else walkSpeed
-                                  playerX += (dx / dist) * currentSpeed
-                                  playerY += (dy / dist) * currentSpeed
-                                  playerX = playerX.coerceIn(200f, 19800f)
-                                  playerY = playerY.coerceIn(200f, 19800f)
-                                  aimAngle = atan2(dy, dx)
-                              }
-                          }
+              override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                  synchronized(lock) { layout(width.toFloat(), height.toFloat()) }
+              }
 
-                          val bulletIter = bullets.iterator()
-                          while (bulletIter.hasNext()) {
-                              val b = bulletIter.next()
-                              b.x += b.vx
-                              b.y += b.vy
-                              b.distanceTraveled += hypot(b.vx, b.vy)
+              override fun surfaceDestroyed(holder: SurfaceHolder) {
+                  stopLoop()
+              }
 
-                              var hit = false
-                              for (z in zombies) {
-                                  if (hypot(b.x - z.x, b.y - z.y) < z.radius + 15f) {
-                                      z.hp -= if (currentWeaponIndex == 0) 35f else 60f
-                                      hit = true
-                                      if (z.hp <= 0) {
-                                          zombies.remove(z)
-                                          playerCoins += 30
-                                      }
-                                      break
+              fun resume() {
+                  if (holder.surface.isValid) startLoop()
+              }
+
+              fun pause() {
+                  stopLoop()
+              }
+
+              private fun startLoop() {
+                  if (running) return
+                  running = true
+                  thread = Thread(this).also { it.start() }
+              }
+
+              private fun stopLoop() {
+                  running = false
+                  try { thread?.join() } catch (e: InterruptedException) {}
+                  thread = null
+              }
+
+              // ---- game loop (about 60 FPS, time based) ----
+              override fun run() {
+                  var last = System.nanoTime()
+                  while (running) {
+                      val now = System.nanoTime()
+                      val dt = min(0.05f, (now - last) / 1_000_000_000f)
+                      last = now
+
+                      if (holder.surface.isValid) {
+                          val c: Canvas? = holder.lockCanvas()
+                          if (c != null) {
+                              try {
+                                  synchronized(lock) {
+                                      update(dt)
+                                      draw(c)
                                   }
-                              }
-
-                              if (hit || b.distanceTraveled > b.maxRange || b.x < 0 || b.x > 20000f || b.y < 0 || b.y > 20000f) {
-                                  bulletIter.remove()
+                              } finally {
+                                  holder.unlockCanvasAndPost(c)
                               }
                           }
+                      }
 
-                          for (z in zombies) {
-                              val zdx = playerX - z.x
-                              val zdy = playerY - z.y
-                              val zDist = hypot(zdx, zdy)
-
-                              if (z.type == 3 && zDist < 180f) {
-                                  playerHp -= 0.2f
-                              }
-
-                              if (zDist > 25f) {
-                                  z.x += (zdx / zDist) * z.speed
-                                  z.y += (zdy / zDist) * z.speed
-                              } else {
-                                  val damage = if (z.type == 3) 1.2f else if (z.type == 2) 0.8f else 0.4f
-                                  playerHp -= damage
-                                  if (playerHp <= 0) gameState = 4
-                              }
-                          }
-
-                          if (zoneRadius > 1000f) zoneRadius -= 0.06f
-                          if (hypot(playerX - 10000f, playerY - 10000f) > zoneRadius) {
-                              playerHp -= 0.4f
-                              if (playerHp <= 0) gameState = 4
-                          }
-
-                          if (zombies.isEmpty()) gameState = 5
+                      val sleepMs = 16L - (System.nanoTime() - now) / 1_000_000L
+                      if (sleepMs > 0) {
+                          try { Thread.sleep(sleepMs) } catch (e: InterruptedException) {}
                       }
                   }
+              }
 
-                  private fun drawGame(canvas: Canvas) {
-                      canvas.drawColor(Color.rgb(35, 100, 35))
+              // ---- battle control ----
+              private fun startBattle() {
+                  state = STATE_PLAY
+                  px = CENTER
+                  py = CENTER
+                  hp = maxHp
+                  kills = 0
+                  wave = 0
+                  spawnLeft = 0
+                  spawnTimer = 0f
+                  banner = 0f
+                  zoneRadius = 9500f
+                  zoneTarget = 9500f
+                  weapon = 0
+                  ammo[0] = MAG[0]; ammo[1] = MAG[1]
+                  reserve[0] = RESERVE_START[0]; reserve[1] = RESERVE_START[1]
+                  fireTimer = 0f
+                  reloadTimer = 0f
+                  fireHeld = false
+                  sprinting = false
+                  moveDX = 0f; moveDY = 0f
+                  aimDX = 0f; aimDY = 0f
+                  aimIdle = 0f
+                  pointerRole.clear()
+                  zombies.clear()
+                  bullets.clear()
+              }
 
-                      val camX = playerX - screenWidth / 2f
-                      val camY = playerY - screenHeight / 2f
+              private fun startWave(n: Int) {
+                  wave = n
+                  spawnLeft = 6 + n * 3
+                  spawnTimer = 1.5f
+                  banner = 2.5f
+                  zoneTarget = max(2000f, 9500f - n * 750f)
+              }
 
-                      canvas.save()
-                      canvas.translate(-camX, -camY)
-
-                      paint.color = Color.rgb(80, 50, 35)
-                      canvas.drawRect(9200f, 9200f, 10800f, 10800f, paint)
-                      paint.color = Color.rgb(160, 45, 45)
-                      canvas.drawRect(9400f, 9400f, 10600f, 10600f, paint)
-
-                      paint.style = Paint.Style.STROKE
-                      paint.strokeWidth = 12f
-                      paint.color = Color.rgb(20, 90, 255)
-                      canvas.drawCircle(10000f, 10000f, zoneRadius, paint)
-                      paint.style = Paint.Style.FILL
-
-                      for (z in zombies) {
-                          if (z.type == 2) {
-                              paint.color = Color.argb(80, 255, 50, 50)
-                              canvas.drawCircle(z.x, z.y, 45f, paint)
-                          } else if (z.type == 3) {
-                              paint.color = Color.argb(80, 50, 255, 50)
-                              canvas.drawCircle(z.x, z.y, 70f, paint)
-                          }
-
-                          if (zombieBitmap != null) {
-                              canvas.drawBitmap(zombieBitmap!!, z.x - 32f, z.y - 32f, paint)
-                          } else {
-                              paint.color = if (z.type == 3) Color.rgb(120, 20, 120) else if (z.type == 2) Color.rgb(180, 90, 30) else Color.rgb(50, 140, 50)
-                              canvas.drawCircle(z.x, z.y, z.radius, paint)
-                          }
-
-                          paint.color = Color.RED
-                          canvas.drawRect(z.x - 25f, z.y - 45f, z.x + 25f, z.y - 40f, paint)
-                          paint.color = Color.YELLOW
-                          val fill = (z.hp / z.maxHp) * 50f
-                          canvas.drawRect(z.x - 25f, z.y - 45f, z.x - 25f + fill, z.y - 40f, paint)
+              private fun spawnZombie() {
+                  val maxKind = min(4, (wave - 1) / 2)
+                  val kind = Random.nextInt(0, maxKind + 1)
+                  for (attempt in 0 until 12) {
+                      val a = Random.nextFloat() * 2f * PI.toFloat()
+                      val dist = 700f + Random.nextFloat() * 400f
+                      val x = (px + cos(a) * dist).coerceIn(300f, WORLD - 300f)
+                      val y = (py + sin(a) * dist).coerceIn(300f, WORLD - 300f)
+                      if (!blockedAt(x, y, KIND_RADIUS[kind])) {
+                          zombies.add(Zombie(x, y, kind))
+                          return
                       }
+                  }
+              }
 
-                      paint.color = Color.YELLOW
-                      for (b in bullets) {
-                          canvas.drawCircle(b.x, b.y, 6f, paint)
-                      }
+              private fun shoot() {
+                  ammo[weapon]--
+                  fireTimer = FIRE_DELAY[weapon]
+                  val spread = if (weapon == 1) (Random.nextFloat() - 0.5f) * 0.06f else 0f
+                  val angle = aimAngle + spread
+                  val speed = 1100f
+                  val sx = px + cos(angle) * 30f
+                  val sy = py + sin(angle) * 30f
+                  bullets.add(Bullet(sx, sy, cos(angle) * speed, sin(angle) * speed))
+              }
 
-                      if (playerBitmap != null) {
-                          canvas.drawBitmap(playerBitmap!!, playerX - 32f, playerY - 32f, paint)
-                      } else {
-                          paint.color = Color.rgb(40, 90, 220)
-                          canvas.drawCircle(playerX, playerY, 25f, paint)
-                      }
+              private fun startReload() {
+                  if (reloadTimer > 0f) return
+                  if (ammo[weapon] >= MAG[weapon]) return
+                  if (reserve[weapon] <= 0) return
+                  reloadTimer = RELOAD_TIME[weapon]
+              }
 
-                      paint.strokeWidth = 4f
-                      var isAimedAtZombie = false
-                      for (z in zombies) {
-                          if (hypot(z.x - playerX, z.y - playerY) < 700f) {
-                              isAimedAtZombie = true
+              private fun finishReload() {
+                  val needed = MAG[weapon] - ammo[weapon]
+                  val take = min(needed, reserve[weapon])
+                  ammo[weapon] += take
+                  reserve[weapon] -= take
+              }
+
+              private fun switchWeapon() {
+                  weapon = 1 - weapon
+                  reloadTimer = 0f
+                  fireTimer = 0.2f
+              }
+
+              // ---- collision ----
+              private fun blockedAt(x: Float, y: Float, r: Float): Boolean {
+                  for (o in obstacles) {
+                      val cx = x.coerceIn(o.left, o.right)
+                      val cy = y.coerceIn(o.top, o.bottom)
+                      val dx = x - cx
+                      val dy = y - cy
+                      if (dx * dx + dy * dy < r * r) return true
+                  }
+                  return false
+              }
+
+              // ---- update ----
+              private fun update(dt: Float) {
+                  if (state != STATE_PLAY) return
+                  if (banner > 0f) banner -= dt
+
+                  // Player movement
+                  val mvx = moveDX / joyR
+                  val mvy = moveDY / joyR
+                  val len = hypot(mvx, mvy)
+                  aimIdle += dt
+                  if (len > 0.15f) {
+                      if (aimIdle > 1f) aimAngle = atan2(mvy, mvx)
+                      val speed = if (sprinting) 420f else 210f
+                      val nx = (px + mvx * speed * dt).coerceIn(200f, WORLD - 200f)
+                      val ny = (py + mvy * speed * dt).coerceIn(200f, WORLD - 200f)
+                      if (!blockedAt(nx, py, PLAYER_R)) px = nx
+                      if (!blockedAt(px, ny, PLAYER_R)) py = ny
+                  }
+
+                  // Weapons
+                  fireTimer = max(0f, fireTimer - dt)
+                  if (reloadTimer > 0f) {
+                      reloadTimer -= dt
+                      if (reloadTimer <= 0f) finishReload()
+                  }
+                  if (fireHeld && fireTimer <= 0f && reloadTimer <= 0f) {
+                      if (ammo[weapon] > 0) shoot() else startReload()
+                  }
+
+                  // Bullets
+                  val bIt = bullets.iterator()
+                  while (bIt.hasNext()) {
+                      val b = bIt.next()
+                      b.x += b.vx * dt
+                      b.y += b.vy * dt
+                      b.travel += hypot(b.vx, b.vy) * dt
+
+                      var hit = false
+                      val zIt = zombies.iterator()
+                      while (zIt.hasNext()) {
+                          val z = zIt.next()
+                          if (hypot(b.x - z.x, b.y - z.y) < z.radius + 6f) {
+                              z.hp -= DAMAGE[weapon]
+                              hit = true
+                              if (z.hp <= 0f) {
+                                  zIt.remove()
+                                  coins += 30
+                                  kills++
+                              }
                               break
                           }
                       }
-                      paint.color = if (isAimedAtZombie) Color.RED else Color.WHITE
-                      val arrowEndX = playerX + cos(aimAngle) * 75f
-                      val arrowEndY = playerY + sin(aimAngle) * 75f
-                      canvas.drawLine(playerX, playerY, arrowEndX, arrowEndY, paint)
 
-                      canvas.restore()
-
-                      when (gameState) {
-                          0 -> {
-                              canvas.drawColor(Color.rgb(20, 20, 25))
-                              paint.textSize = 42f
-                              paint.color = Color.rgb(235, 130, 20)
-                              canvas.drawText("ZOMBIE Z: ERANGEL MOBILE ELITE", screenWidth / 2 - 380f, 180f, paint)
-                              paint.color = Color.rgb(210, 50, 50)
-                              canvas.drawRect(screenWidth / 2 - 160f, 320f, screenWidth / 2 + 160f, 410f, paint)
-                              paint.color = Color.WHITE
-                              paint.textSize = 32f
-                              canvas.drawText("START SURVIVAL", screenWidth / 2 - 130f, 375f, paint)
-                          }
-                          3 -> {
-                              paint.color = Color.argb(100, 255, 255, 255)
-                              canvas.drawCircle(joyX, joyY, joyRadius, paint)
-                              paint.color = Color.rgb(0, 210, 210)
-                              canvas.drawCircle(joyKnobX, joyKnobY, 30f, paint)
-
-                              paint.color = if (isSprinting) Color.rgb(255, 165, 0) else Color.argb(150, 100, 100, 100)
-                              canvas.drawCircle(sprintBtnX, sprintBtnY, sprintBtnRadius, paint)
-                              paint.color = Color.WHITE
-                              paint.textSize = 20f
-                              canvas.drawText("RUN", sprintBtnX - 22f, sprintBtnY + 7f, paint)
-
-                              paint.color = Color.rgb(210, 50, 50)
-                              canvas.drawCircle(screenWidth - 150f, screenHeight - 150f, 75f, paint)
-                              paint.color = Color.WHITE
-                              paint.textSize = 28f
-                              canvas.drawText("FIRE", screenWidth - 180f, screenHeight - 140f, paint)
-
-                              paint.color = Color.argb(180, 40, 40, 50)
-                              canvas.drawRect(switchBtnX - 110f, switchBtnY - 30f, switchBtnX + 30f, switchBtnY + 30f, paint)
-                              paint.color = Color.YELLOW
-                              paint.textSize = 22f
-                              canvas.drawText(weaponNames[currentWeaponIndex], switchBtnX - 100f, switchBtnY + 8f, paint)
-
-                              paint.textSize = 24f
-                              paint.color = Color.YELLOW
-                              canvas.drawText("HP: ${playerHp.toInt()} | Zombies: ${zombies.size} | Coins: $playerCoins🪙", 40f, 50f, paint)
-                          }
-                          4 -> {
-                              canvas.drawColor(Color.BLACK)
-                              paint.textSize = 45f; paint.color = Color.RED
-                              canvas.drawText("YOU DIED IN THE ERANGEL FOG...", screenWidth / 2 - 330f, screenHeight / 2 - 30f, paint)
-                          }
-                          5 -> {
-                              canvas.drawColor(Color.BLACK)
-                              paint.textSize = 45f; paint.color = Color.GREEN
-                              canvas.drawText("ERANGEL DAY SURVIVED!", screenWidth / 2 - 220f, screenHeight / 2 - 30f, paint)
-                          }
+                      if (hit || b.travel > 900f || b.x < 0f || b.x > WORLD || b.y < 0f || b.y > WORLD) {
+                          bIt.remove()
                       }
                   }
 
-                  override fun onTouchEvent(event: MotionEvent): Boolean {
-                      val x = event.x; val y = event.y
-                      when (event.action) {
-                          MotionEvent.ACTION_DOWN -> {
-                              when (gameState) {
-                                  0 -> startBattle()
-                                  3 -> {
-                                      if (hypot(x - sprintBtnX, y - sprintBtnY) <= sprintBtnRadius) {
-                                          isSprinting = !isSprinting
-                                      }
-                                      else if (x >= switchBtnX - 110f && x <= switchBtnX + 30f && y >= switchBtnY - 30f && y <= switchBtnY + 30f) {
-                                          currentWeaponIndex = (currentWeaponIndex + 1) % weaponNames.size
-                                      }
-                                      else if (hypot(x - (screenWidth - 150f), y - (screenHeight - 150f)) <= 75f) {
-                                          val speed = 18f
-                                          val vx = cos(aimAngle) * speed
-                                          val vy = sin(aimAngle) * speed
-                                          bullets.add(Bullet(playerX, playerY, vx, vy))
-                                      }
-                                      else if (hypot(x - joyX, y - joyY) <= joyRadius + 50f) {
-                                          joyActive = true
-                                          joyKnobX = x
-                                          joyKnobY = y
-                                      }
-                                  }
-                                  4, 5 -> gameState = 0
-                              }
-                          }
-                          MotionEvent.ACTION_MOVE -> {
-                              if (joyActive) {
-                                  val dx = x - joyX
-                                  val dy = y - joyY
-                                  val dist = hypot(dx, dy)
-                                  if (dist > joyRadius) {
-                                      joyKnobX = joyX + (dx / dist) * joyRadius
-                                      joyKnobY = joyY + (dy / dist) * joyRadius
-                                  } else {
-                                      joyKnobX = x
-                                      joyKnobY = y
-                                  }
-                              }
-                          }
-                          MotionEvent.ACTION_UP -> {
-                              joyActive = false
-                              joyKnobX = joyX
-                              joyKnobY = joyY
-                          }
+                  // Zombies
+                  for (z in zombies) {
+                      val dx = px - z.x
+                      val dy = py - z.y
+                      val d = hypot(dx, dy)
+                      if (d > z.radius + PLAYER_R + 2f) {
+                          val nx = z.x + dx / d * z.speed * dt
+                          val ny = z.y + dy / d * z.speed * dt
+                          if (!blockedAt(nx, z.y, z.radius)) z.x = nx
+                          if (!blockedAt(z.x, ny, z.radius)) z.y = ny
+                      } else {
+                          hp -= KIND_DPS[z.kind] * dt
                       }
-                      return true
+                  }
+
+                  // Zone
+                  if (zoneRadius > zoneTarget) zoneRadius = max(zoneTarget, zoneRadius - 40f * dt)
+                  if (hypot(px - CENTER, py - CENTER) > zoneRadius) hp -= 10f * dt
+
+                  if (hp <= 0f) {
+                      hp = 0f
+                      state = STATE_DEAD
+                      return
+                  }
+
+                  // Waves
+                  if (spawnLeft > 0) {
+                      spawnTimer -= dt
+                      if (spawnTimer <= 0f) {
+                          spawnZombie()
+                          spawnLeft--
+                          spawnTimer = 0.7f
+                      }
+                  } else if (zombies.isEmpty()) {
+                      if (wave >= MAX_WAVE) {
+                          state = STATE_WON
+                          return
+                      }
+                      startWave(wave + 1)
                   }
               }
-          """)
-          with open("app/src/main/java/com/zombiez/game/GameView.kt", "w", encoding="utf-8") as f:
-              f.write(game_code)
 
-          print("[SUCCESS] GameView generated successfully!")
+              // ---- drawing helpers ----
+              private fun fillCircle(c: Canvas, x: Float, y: Float, r: Float, color: Int) {
+                  paint.style = Paint.Style.FILL
+                  paint.color = color
+                  c.drawCircle(x, y, r, paint)
+              }
+
+              private fun fillRect(c: Canvas, r: RectF, color: Int) {
+                  paint.style = Paint.Style.FILL
+                  paint.color = color
+                  c.drawRect(r, paint)
+              }
+
+              private fun drawText(c: Canvas, t: String, x: Float, y: Float, size: Float, color: Int, center: Boolean = false) {
+                  paint.style = Paint.Style.FILL
+                  paint.color = color
+                  paint.textSize = size
+                  paint.textAlign = if (center) Paint.Align.CENTER else Paint.Align.LEFT
+                  c.drawText(t, x, y, paint)
+                  paint.textAlign = Paint.Align.LEFT
+              }
+
+              private fun drawSprite(c: Canvas, bmp: Bitmap, cx: Float, cy: Float, size: Float) {
+                  paint.style = Paint.Style.FILL
+                  paint.color = Color.WHITE
+                  val h = size / 2f
+                  c.drawBitmap(bmp, null, RectF(cx - h, cy - h, cx + h, cy + h), paint)
+              }
+
+              // ---- draw ----
+              private fun draw(c: Canvas) {
+                  when (state) {
+                      STATE_MENU -> { drawMenu(c); return }
+                      STATE_DEAD -> { drawEnd(c, "YOU DIED", Color.RED); return }
+                      STATE_WON -> { drawEnd(c, "SURVIVED ALL WAVES!", Color.GREEN); return }
+                  }
+
+                  val camX = px - screenW / 2f
+                  val camY = py - screenH / 2f
+                  c.drawColor(Color.rgb(35, 100, 35))
+
+                  c.save()
+                  c.translate(-camX, -camY)
+                  drawWorld(c, camX, camY)
+                  c.restore()
+
+                  drawHud(c)
+                  drawControls(c)
+              }
+
+              private fun drawWorld(c: Canvas, camX: Float, camY: Float) {
+                  // Grid for movement feel
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 2f
+                  paint.color = Color.argb(35, 0, 0, 0)
+                  var gx = floor(camX / 200f) * 200f
+                  while (gx < camX + screenW) {
+                      c.drawLine(gx, camY, gx, camY + screenH, paint)
+                      gx += 200f
+                  }
+                  var gy = floor(camY / 200f) * 200f
+                  while (gy < camY + screenH) {
+                      c.drawLine(camX, gy, camX + screenW, gy, paint)
+                      gy += 200f
+                  }
+
+                  // Map border
+                  paint.strokeWidth = 10f
+                  paint.color = Color.rgb(200, 30, 30)
+                  c.drawRect(0f, 0f, WORLD, WORLD, paint)
+
+                  // Zone
+                  paint.strokeWidth = 12f
+                  paint.color = Color.rgb(20, 90, 255)
+                  c.drawCircle(CENTER, CENTER, zoneRadius, paint)
+
+                  // Trees (no collision)
+                  for (t in trees) {
+                      fillCircle(c, t[0], t[1], t[2] + 6f, Color.rgb(20, 70, 20))
+                      fillCircle(c, t[0], t[1], t[2] * 0.6f, Color.rgb(40, 110, 40))
+                  }
+
+                  // Buildings (collision)
+                  for (o in obstacles) {
+                      fillRect(c, o, Color.rgb(110, 80, 60))
+                      fillRect(c, RectF(o.left + 12f, o.top + 12f, o.right - 12f, o.bottom - 12f), Color.rgb(160, 120, 90))
+                  }
+
+                  // Zombies
+                  for (z in zombies) {
+                      if (z.kind == 2) fillCircle(c, z.x, z.y, 50f, Color.argb(70, 255, 50, 50))
+                      if (z.kind == 3) fillCircle(c, z.x, z.y, 50f, Color.argb(70, 160, 60, 220))
+
+                      val bmp = sprites[z.kind]
+                      if (bmp != null) {
+                          drawSprite(c, bmp, z.x, z.y, 72f)
+                      } else {
+                          fillCircle(c, z.x, z.y, z.radius, KIND_COLOR[z.kind])
+                      }
+
+                      val barY = z.y - 44f
+                      fillRect(c, RectF(z.x - 25f, barY, z.x + 25f, barY + 5f), Color.RED)
+                      val ratio = (z.hp / z.maxHp).coerceIn(0f, 1f)
+                      fillRect(c, RectF(z.x - 25f, barY, z.x - 25f + 50f * ratio, barY + 5f), Color.YELLOW)
+                  }
+
+                  // Bullets
+                  for (b in bullets) {
+                      fillCircle(c, b.x, b.y, 5f, Color.YELLOW)
+                  }
+
+                  // Player
+                  val pb = playerBitmap
+                  if (pb != null) {
+                      drawSprite(c, pb, px, py, 72f)
+                  } else {
+                      fillCircle(c, px, py, PLAYER_R, Color.rgb(40, 90, 220))
+                  }
+
+                  // Aim line
+                  paint.style = Paint.Style.STROKE
+                  paint.strokeWidth = 4f
+                  paint.color = if (fireHeld) Color.RED else Color.WHITE
+                  c.drawLine(px, py, px + cos(aimAngle) * 110f, py + sin(aimAngle) * 110f, paint)
+              }
+
+              private fun drawHud(c: Canvas) {
+                  val bw = 260f * s
+                  val bh = 22f * s
+                  fillRect(c, RectF(20f * s, 20f * s, 20f * s + bw, 20f * s + bh), Color.DKGRAY)
+                  val ratio = (hp / maxHp).coerceIn(0f, 1f)
+                  val barColor = if (ratio > 0.35f) Color.rgb(60, 200, 60) else Color.rgb(220, 40, 40)
+                  fillRect(c, RectF(20f * s, 20f * s, 20f * s + bw * ratio, 20f * s + bh), barColor)
+                  drawText(c, "HP ${hp.toInt()}", 20f * s + bw + 12f * s, 20f * s + bh - 4f * s, 20f * s, Color.WHITE)
+
+                  drawText(c, "Wave $wave / $MAX_WAVE   Zombies ${zombies.size}", 20f * s, 75f * s, 24f * s, Color.YELLOW)
+                  drawText(c, "Coins $coins   Kills $kills", 20f * s, 108f * s, 24f * s, Color.YELLOW)
+
+                  if (banner > 0f) {
+                      drawText(c, "WAVE $wave", screenW / 2f, screenH * 0.3f, 56f * s, Color.rgb(255, 200, 0), true)
+                  }
+              }
+
+              private fun drawControls(c: Canvas) {
+                  // Move stick
+                  fillCircle(c, moveBaseX, moveBaseY, joyR, Color.argb(90, 255, 255, 255))
+                  fillCircle(c, moveBaseX + moveDX, moveBaseY + moveDY, 30f * s, Color.rgb(0, 210, 210))
+
+                  // Aim stick
+                  fillCircle(c, aimBaseX, aimBaseY, joyR, Color.argb(90, 255, 255, 255))
+                  fillCircle(c, aimBaseX + aimDX, aimBaseY + aimDY, 30f * s, Color.rgb(255, 140, 0))
+
+                  // Fire
+                  fillCircle(c, fireX, fireY, fireR, if (fireHeld) Color.rgb(255, 80, 80) else Color.rgb(210, 50, 50))
+                  drawText(c, "FIRE", fireX, fireY + 10f * s, 28f * s, Color.WHITE, true)
+
+                  // Run
+                  fillCircle(c, runX, runY, runR, if (sprinting) Color.rgb(255, 165, 0) else Color.argb(150, 100, 100, 100))
+                  drawText(c, "RUN", runX, runY + 7f * s, 20f * s, Color.WHITE, true)
+
+                  // Reload
+                  fillCircle(c, reloadX, reloadY, reloadR, Color.rgb(40, 110, 200))
+                  drawText(c, "R", reloadX, reloadY + 9f * s, 26f * s, Color.WHITE, true)
+
+                  // Weapon box
+                  fillRect(c, weaponRect, Color.argb(180, 40, 40, 50))
+                  val status = if (reloadTimer > 0f) "RELOADING..." else "${ammo[weapon]} / ${reserve[weapon]}"
+                  drawText(c, WEAPON_NAMES[weapon], weaponRect.left + 10f * s, weaponRect.top + 28f * s, 20f * s, Color.YELLOW)
+                  drawText(c, status, weaponRect.left + 10f * s, weaponRect.top + 56f * s, 20f * s, Color.WHITE)
+              }
+
+              private fun drawMenu(c: Canvas) {
+                  c.drawColor(Color.rgb(20, 20, 25))
+                  drawText(c, "ZOMBIE Z: SURVIVAL", screenW / 2f, screenH * 0.25f, 46f * s, Color.rgb(235, 130, 20), true)
+                  fillRect(c, startRect, Color.rgb(210, 50, 50))
+                  drawText(c, "START SURVIVAL", screenW / 2f, startRect.centerY() + 12f * s, 32f * s, Color.WHITE, true)
+                  drawText(
+                      c,
+                      "Left: move | Right: aim | FIRE shoot | R reload | Survive $MAX_WAVE waves",
+                      screenW / 2f, screenH * 0.85f, 20f * s, Color.LTGRAY, true
+                  )
+              }
+
+              private fun drawEnd(c: Canvas, title: String, color: Int) {
+                  c.drawColor(Color.BLACK)
+                  drawText(c, title, screenW / 2f, screenH * 0.4f, 48f * s, color, true)
+                  drawText(c, "Wave $wave   Kills $kills   Coins $coins", screenW / 2f, screenH * 0.5f, 26f * s, Color.WHITE, true)
+                  drawText(c, "Tap to return to menu", screenW / 2f, screenH * 0.6f, 22f * s, Color.LTGRAY, true)
+              }
+
+              // ---- touch (multi-touch) ----
+              private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float = hypot(x1 - x2, y1 - y2)
+
+              private fun applyStick(role: Int, x: Float, y: Float) {
+                  val bx = if (role == ROLE_MOVE) moveBaseX else aimBaseX
+                  val by = if (role == ROLE_MOVE) moveBaseY else aimBaseY
+                  var dx = x - bx
+                  var dy = y - by
+                  val d = hypot(dx, dy)
+                  if (d > joyR) {
+                      dx = dx / d * joyR
+                      dy = dy / d * joyR
+                  }
+                  if (role == ROLE_MOVE) {
+                      moveDX = dx
+                      moveDY = dy
+                  } else {
+                      aimDX = dx
+                      aimDY = dy
+                      if (d > 12f * s) {
+                          aimAngle = atan2(dy, dx)
+                          aimIdle = 0f
+                      }
+                  }
+              }
+
+              private fun onPointerDown(id: Int, x: Float, y: Float) {
+                  when (state) {
+                      STATE_MENU -> {
+                          if (startRect.contains(x, y)) startBattle()
+                      }
+                      STATE_PLAY -> {
+                          if (dist(x, y, fireX, fireY) <= fireR) {
+                              pointerRole[id] = ROLE_FIRE
+                              fireHeld = true
+                          } else if (dist(x, y, runX, runY) <= runR) {
+                              sprinting = !sprinting
+                          } else if (dist(x, y, reloadX, reloadY) <= reloadR) {
+                              startReload()
+                          } else if (weaponRect.contains(x, y)) {
+                              switchWeapon()
+                          } else if (dist(x, y, moveBaseX, moveBaseY) <= joyR + 60f * s) {
+                              pointerRole[id] = ROLE_MOVE
+                              applyStick(ROLE_MOVE, x, y)
+                          } else if (dist(x, y, aimBaseX, aimBaseY) <= joyR + 60f * s) {
+                              pointerRole[id] = ROLE_AIM
+                              applyStick(ROLE_AIM, x, y)
+                          }
+                      }
+                      else -> state = STATE_MENU
+                  }
+              }
+
+              private fun onPointerMove(id: Int, x: Float, y: Float) {
+                  val role = pointerRole[id] ?: return
+                  if (role == ROLE_MOVE || role == ROLE_AIM) applyStick(role, x, y)
+              }
+
+              private fun onPointerUp(id: Int) {
+                  when (pointerRole.remove(id)) {
+                      ROLE_MOVE -> { moveDX = 0f; moveDY = 0f }
+                      ROLE_AIM -> { aimDX = 0f; aimDY = 0f }
+                      ROLE_FIRE -> fireHeld = false
+                  }
+              }
+
+              override fun onTouchEvent(event: MotionEvent): Boolean {
+                  synchronized(lock) {
+                      when (event.actionMasked) {
+                          MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                              val idx = event.actionIndex
+                              onPointerDown(event.getPointerId(idx), event.getX(idx), event.getY(idx))
+                          }
+                          MotionEvent.ACTION_MOVE -> {
+                              for (i in 0 until event.pointerCount) {
+                                  onPointerMove(event.getPointerId(i), event.getX(i), event.getY(i))
+                              }
+                          }
+                          MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                              onPointerUp(event.getPointerId(event.actionIndex))
+                          }
+                          MotionEvent.ACTION_CANCEL -> {
+                              pointerRole.clear()
+                              moveDX = 0f; moveDY = 0f
+                              aimDX = 0f; aimDY = 0f
+                              fireHeld = false
+                          }
+                      }
+                  }
+                  return true
+              }
+          }
           EOF
+
+          echo "[SUCCESS] Kotlin source files written."
 
       - name: Generate Assets via Separate Python Script
         run: |
@@ -608,7 +932,6 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ZombieZ-Erangel-APK
+          name: ZombieZ-Survival-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
