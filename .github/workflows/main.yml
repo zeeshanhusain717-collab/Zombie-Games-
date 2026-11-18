@@ -79,8 +79,8 @@ jobs:
                   applicationId "com.zombiez.game"
                   minSdk 21
                   targetSdk 34
-                  versionCode 4
-                  versionName "3.1-camera"
+                  versionCode 5
+                  versionName "3.2-zombies"
               }
 
               buildTypes {
@@ -197,6 +197,7 @@ jobs:
           import javax.microedition.khronos.egl.EGLConfig
           import javax.microedition.khronos.opengles.GL10
           import kotlin.math.*
+          import kotlin.random.Random
 
           class Mesh(verts: FloatArray, normals: FloatArray) {
               val count: Int = verts.size / 3
@@ -213,6 +214,17 @@ jobs:
           }
 
           class GameRenderer : GLSurfaceView.Renderer {
+
+              companion object {
+                  const val WORLD = 140f
+                  const val PLAYER_R = 0.6f
+                  const val PLAYER_MAX_HP = 100f
+                  const val MAG_SIZE = 12
+                  const val RESERVE_START = 60
+                  const val RELOAD_TIME = 1.5f
+                  const val FIRE_DELAY = 0.15f
+                  const val BULLET_DMG = 25f
+              }
 
               private val VERTEX_SHADER = """
                   attribute vec3 aPos;
@@ -236,8 +248,23 @@ jobs:
                   }
               """.trimIndent()
 
+              private class Zombie(var x: Float, var z: Float, val big: Boolean) {
+                  val scale = if (big) 1.35f else 1f
+                  val maxHp = if (big) 120f else 60f
+                  var hp = maxHp
+                  val speed = if (big) 1.6f else 2.4f
+                  val dmg = if (big) 18f else 10f
+                  var hitCd = 0f
+              }
+
+              private class Bullet(var x: Float, var z: Float, val dx: Float, val dz: Float) {
+                  var life = 1.5f
+              }
+
+              // Matrices
               private val proj = FloatArray(16)
               private val view = FloatArray(16)
+              private val ortho = FloatArray(16)
               private val model = FloatArray(16)
               private val tmp = FloatArray(16)
               private val mvp = FloatArray(16)
@@ -251,24 +278,31 @@ jobs:
               private lateinit var cube: Mesh
               private lateinit var plane: Mesh
 
-              // Buildings: x, z, width, height, depth
-              private val buildings = arrayOf(
-                  floatArrayOf(-25f, -20f, 10f, 16f, 10f),
-                  floatArrayOf(20f, -30f, 12f, 22f, 8f),
-                  floatArrayOf(30f, 25f, 9f, 12f, 14f),
-                  floatArrayOf(-40f, 30f, 14f, 18f, 9f),
-                  floatArrayOf(5f, 45f, 16f, 26f, 12f),
-                  floatArrayOf(-10f, -55f, 8f, 10f, 8f)
-              )
+              // Buildings: x, z, width, height, depth (whole map, built once)
+              private val buildings = ArrayList<FloatArray>()
 
+              // Color palettes; the palette changes every wave
               private val buildingColors = arrayOf(
                   floatArrayOf(0.55f, 0.45f, 0.35f),
                   floatArrayOf(0.45f, 0.5f, 0.6f),
-                  floatArrayOf(0.6f, 0.4f, 0.4f)
+                  floatArrayOf(0.6f, 0.4f, 0.4f),
+                  floatArrayOf(0.5f, 0.55f, 0.45f)
               )
-              private var tint = 0
 
-              // Player and camera state
+              // Wave and game state
+              private var wave = 0
+              private var spawnLeft = 0
+              private var spawnTimer = 0f
+              private var kills = 0
+              private val zombies = mutableListOf<Zombie>()
+              private val bullets = mutableListOf<Bullet>()
+              private var playerHp = PLAYER_MAX_HP
+              private var ammo = MAG_SIZE
+              private var reserve = RESERVE_START
+              private var reloadTimer = 0f
+              private var fireCd = 0f
+
+              // Player and camera
               private var px = 0f
               private var pz = 0f
               private var yaw = 0f
@@ -279,14 +313,14 @@ jobs:
               private var camZ = 0f
               private var camInit = false
 
-              // Screen size (updated on surface change)
+              // Screen
               @Volatile private var screenW = 1f
               @Volatile private var screenH = 1f
               private var aspect = 1f
 
               // Touch state (protected by lock)
               private val lock = Any()
-              // touch values: [side (0=move, 1=look, 2=ads), originX, originY, lastX, lastY]
+              // [side, originX, originY, lastX, lastY]; side: 0 move, 1 look, 2 ADS, 3 fire
               private val touches = HashMap<Int, FloatArray>()
               private var moveX = 0f
               private var moveY = 0f
@@ -295,14 +329,15 @@ jobs:
 
               private var lastTime = 0L
 
-              // ---------- touch API (called from UI thread) ----------
+              // ---------- touch API (UI thread) ----------
               fun touchDown(id: Int, x: Float, y: Float) {
                   synchronized(lock) {
                       val w = screenW
                       val h = screenH
                       val side = when {
-                          x < w / 2f -> 0f
-                          x > w * 0.7f && y > h * 0.55f -> 2f
+                          x < w * 0.4f -> 0f
+                          y > h * 0.55f && x > w * 0.8f -> 2f
+                          y > h * 0.55f && x > w * 0.45f -> 3f
                           else -> 1f
                       }
                       touches[id] = floatArrayOf(side, x, y, x, y)
@@ -368,6 +403,8 @@ jobs:
 
                   cube = buildCube()
                   plane = buildPlane()
+                  if (buildings.isEmpty()) buildCity()
+
                   lastTime = System.nanoTime()
                   camInit = false
               }
@@ -389,6 +426,7 @@ jobs:
                   var dxLook = 0f
                   var dyLook = 0f
                   var ads = false
+                  var fire = false
                   synchronized(lock) {
                       sx = moveX
                       sy = moveY
@@ -397,19 +435,68 @@ jobs:
                       lookDx = 0f
                       lookDy = 0f
                       ads = touches.values.any { it[0] == 2f }
+                      fire = touches.values.any { it[0] == 3f }
                   }
 
-                  // Camera rotation from right-side drag
                   yaw += dxLook * 0.008f
                   pitch = (pitch + dyLook * 0.004f).coerceIn(0.1f, 0.9f)
 
-                  // Direction vectors on the ground (XZ plane)
+                  update(dt, sx, sy, ads, fire)
+                  updateCamera(dt, ads)
+
+                  // ----- 3D world -----
+                  Matrix.perspectiveM(proj, 0, if (ads) 45f else 60f, aspect, 0.1f, 400f)
+                  GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+                  GLES20.glUseProgram(program)
+
+                  // Ground
+                  val groundSize = WORLD * 2f + 40f
+                  drawPart(plane, 0f, 0f, 0f, 0f, 0f, 0f, 0f, groundSize, 1f, groundSize, 0.25f, 0.55f, 0.25f)
+
+                  // Buildings, color by wave
+                  val pal = buildingColors[max(0, wave - 1) % buildingColors.size]
+                  for (b in buildings) {
+                      drawPart(cube, b[0], 0f, b[1], 0f, 0f, b[3] / 2f, 0f, b[2], b[3], b[4], pal[0], pal[1], pal[2])
+                  }
+
+                  // Player (body, head, gun), rotated with yaw
+                  val rot = Math.toDegrees(yaw.toDouble()).toFloat()
+                  drawPart(cube, px, 0f, pz, rot, 0f, 0.6f, 0f, 0.8f, 1.2f, 0.6f, 0.2f, 0.4f, 0.9f)
+                  drawPart(cube, px, 0f, pz, rot, 0f, 1.5f, 0f, 0.5f, 0.5f, 0.5f, 0.9f, 0.75f, 0.6f)
+                  drawPart(cube, px, 0f, pz, rot, 0f, 1.0f, 0.9f, 0.18f, 0.18f, 1.0f, 0.15f, 0.15f, 0.15f)
+
+                  // Zombies (body, head, two red eyes facing the player)
+                  for (z in zombies) {
+                      val ang = Math.toDegrees(atan2((px - z.x).toDouble(), (pz - z.z).toDouble())).toFloat()
+                      val s = z.scale
+                      val bodyR = if (z.big) 0.35f else 0.2f
+                      val bodyG = if (z.big) 0.5f else 0.6f
+                      val bodyB = if (z.big) 0.2f else 0.2f
+                      drawPart(cube, z.x, 0f, z.z, ang, 0f, 0.55f * s, 0f, 0.7f * s, 1.1f * s, 0.5f * s, bodyR, bodyG, bodyB)
+                      drawPart(cube, z.x, 0f, z.z, ang, 0f, 1.4f * s, 0f, 0.6f * s, 0.6f * s, 0.6f * s, 0.25f, 0.6f, 0.25f)
+                      drawPart(cube, z.x, 0f, z.z, ang, 0.15f * s, 1.45f * s, 0.31f * s, 0.12f * s, 0.12f * s, 0.05f * s, 1f, 0.1f, 0.1f)
+                      drawPart(cube, z.x, 0f, z.z, ang, -0.15f * s, 1.45f * s, 0.31f * s, 0.12f * s, 0.12f * s, 0.05f * s, 1f, 0.1f, 0.1f)
+                  }
+
+                  // Bullets
+                  for (b in bullets) {
+                      drawPart(cube, b.x, 1.2f, b.z, 0f, 0f, 0f, 0f, 0.12f, 0.12f, 0.5f, 1f, 0.9f, 0.2f)
+                  }
+
+                  // ----- 2D HUD (drawn over the world) -----
+                  drawHud(fire, ads)
+              }
+
+              // ---------- game logic ----------
+              private fun update(dt: Float, sx: Float, sy: Float, ads: Boolean, fire: Boolean) {
+                  if (wave == 0) startWave(1)
+
                   val fwdX = sin(yaw)
                   val fwdZ = cos(yaw)
                   val rgtX = cos(yaw)
                   val rgtZ = -sin(yaw)
 
-                  // Movement relative to camera direction
+                  // Player movement relative to camera
                   if (hypot(sx, sy) > 0.12f) {
                       var mx = rgtX * sx + fwdX * (-sy)
                       var mz = rgtZ * sx + fwdZ * (-sy)
@@ -419,21 +506,127 @@ jobs:
                           mz /= len
                       }
                       val speed = if (ads) 3.5f else moveSpeed
-                      val step = speed * dt
-                      val nx = (px + mx * step).coerceIn(-90f, 90f)
-                      if (!blocked(nx, pz)) px = nx
-                      val nz = (pz + mz * step).coerceIn(-90f, 90f)
-                      if (!blocked(px, nz)) pz = nz
+                      val nx = (px + mx * speed * dt).coerceIn(-WORLD + 2f, WORLD - 2f)
+                      if (!blocked(nx, pz, PLAYER_R)) px = nx
+                      val nz = (pz + mz * speed * dt).coerceIn(-WORLD + 2f, WORLD - 2f)
+                      if (!blocked(px, nz, PLAYER_R)) pz = nz
                   }
 
-                  // Third-person camera over the right shoulder, smooth follow
+                  // Reload
+                  if (reloadTimer > 0f) {
+                      reloadTimer -= dt
+                      if (reloadTimer <= 0f) {
+                          val take = min(MAG_SIZE - ammo, reserve)
+                          ammo += take
+                          reserve -= take
+                      }
+                  } else if (ammo == 0 && reserve > 0) {
+                      reloadTimer = RELOAD_TIME
+                  }
+
+                  // Shooting
+                  fireCd = max(0f, fireCd - dt)
+                  if (fire && fireCd <= 0f && ammo > 0 && reloadTimer <= 0f) {
+                      ammo--
+                      fireCd = FIRE_DELAY
+                      bullets.add(Bullet(px + fwdX * 1.0f, pz + fwdZ * 1.0f, fwdX * 60f, fwdZ * 60f))
+                  }
+
+                  // Bullets move and hit
+                  val bIt = bullets.iterator()
+                  while (bIt.hasNext()) {
+                      val b = bIt.next()
+                      b.x += b.dx * dt
+                      b.z += b.dz * dt
+                      b.life -= dt
+                      var hit = blocked(b.x, b.z, 0f)
+                      if (!hit) {
+                          val zIt = zombies.iterator()
+                          while (zIt.hasNext()) {
+                              val z = zIt.next()
+                              if (hypot(b.x - z.x, b.z - z.z) < 0.7f * z.scale + 0.2f) {
+                                  z.hp -= BULLET_DMG
+                                  hit = true
+                                  if (z.hp <= 0f) {
+                                      zIt.remove()
+                                      kills++
+                                  }
+                                  break
+                              }
+                          }
+                      }
+                      if (hit || b.life <= 0f || abs(b.x) > WORLD || abs(b.z) > WORLD) bIt.remove()
+                  }
+
+                  // Zombies chase and attack
+                  for (z in zombies) {
+                      z.hitCd = max(0f, z.hitCd - dt)
+                      val dx = px - z.x
+                      val dz = pz - z.z
+                      val d = hypot(dx, dz)
+                      if (d > 1.2f * z.scale + PLAYER_R) {
+                          val nx = z.x + dx / d * z.speed * dt
+                          val nz = z.z + dz / d * z.speed * dt
+                          if (!blocked(nx, z.z, 0.5f * z.scale)) z.x = nx
+                          if (!blocked(z.x, nz, 0.5f * z.scale)) z.z = nz
+                      } else if (z.hitCd <= 0f) {
+                          playerHp -= z.dmg
+                          z.hitCd = 1f
+                      }
+                  }
+
+                  // Player respawn (simple: restore HP and return to center)
+                  if (playerHp <= 0f) {
+                      playerHp = PLAYER_MAX_HP
+                      px = 0f
+                      pz = 0f
+                  }
+
+                  // Waves: spawn, then start the next wave when all zombies are dead
+                  if (spawnLeft > 0) {
+                      spawnTimer -= dt
+                      if (spawnTimer <= 0f) {
+                          spawnZombie()
+                          spawnLeft--
+                          spawnTimer = 0.8f
+                      }
+                  } else if (zombies.isEmpty()) {
+                      startWave(wave + 1)
+                  }
+              }
+
+              private fun startWave(n: Int) {
+                  wave = n
+                  spawnLeft = 4 + n * 2
+                  spawnTimer = 1f
+              }
+
+              private fun spawnZombie() {
+                  for (attempt in 0 until 15) {
+                      val a = Random.nextFloat() * 2f * PI.toFloat()
+                      val d = 35f + Random.nextFloat() * 20f
+                      val x = (px + cos(a) * d).coerceIn(-WORLD + 3f, WORLD - 3f)
+                      val z = (pz + sin(a) * d).coerceIn(-WORLD + 3f, WORLD - 3f)
+                      if (!blocked(x, z, 1.2f)) {
+                          val big = wave >= 3 && Random.nextFloat() < 0.25f
+                          zombies.add(Zombie(x, z, big))
+                          return
+                      }
+                  }
+              }
+
+              // ---------- camera ----------
+              private fun updateCamera(dt: Float, ads: Boolean) {
+                  val fwdX = sin(yaw)
+                  val fwdZ = cos(yaw)
+                  val rgtX = cos(yaw)
+                  val rgtZ = -sin(yaw)
+
                   val dist = if (ads) 4.5f else 9f
                   val shoulder = if (ads) 0.9f else 1.6f
-                  val cosP = cos(pitch)
-                  val sinP = sin(pitch)
-                  val desX = px - fwdX * dist * cosP + rgtX * shoulder
-                  val desY = 1.2f + dist * sinP
-                  val desZ = pz - fwdZ * dist * cosP + rgtZ * shoulder
+                  val desX = px - fwdX * dist * cos(pitch) + rgtX * shoulder
+                  val desY = 1.2f + dist * sin(pitch)
+                  val desZ = pz - fwdZ * dist * cos(pitch) + rgtZ * shoulder
 
                   if (!camInit) {
                       camX = desX
@@ -449,62 +642,102 @@ jobs:
                   val tgtX = px + fwdX * 5f + rgtX * shoulder * 0.6f
                   val tgtZ = pz + fwdZ * 5f + rgtZ * shoulder * 0.6f
                   Matrix.setLookAtM(view, 0, camX, camY, camZ, tgtX, 1.2f, tgtZ, 0f, 1f, 0f)
+              }
 
-                  val fovy = if (ads) 45f else 60f
-                  Matrix.perspectiveM(proj, 0, fovy, aspect, 0.1f, 300f)
-
-                  GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+              // ---------- HUD (2D rectangles in screen space) ----------
+              private fun drawHud(fire: Boolean, ads: Boolean) {
+                  val w = screenW
+                  val h = screenH
+                  GLES20.glDisable(GLES20.GL_DEPTH_TEST)
+                  Matrix.orthoM(ortho, 0, 0f, w, h, 0f, -1f, 1f)
                   GLES20.glUseProgram(program)
 
-                  // Ground
-                  drawBox(plane, 0f, 0f, 0f, 200f, 1f, 200f, 0.25f, 0.55f, 0.25f, 0f)
+                  // HP bar
+                  drawRect2D(w * 0.03f, h * 0.03f, w * 0.3f, h * 0.035f, 0.2f, 0.2f, 0.2f)
+                  val hpRatio = (playerHp / PLAYER_MAX_HP).coerceIn(0f, 1f)
+                  drawRect2D(w * 0.03f, h * 0.03f, w * 0.3f * hpRatio, h * 0.035f, 0.2f, 0.85f, 0.25f)
 
-                  // Buildings
-                  val bc = buildingColors[tint]
-                  for (b in buildings) {
-                      drawBox(cube, b[0], b[3] / 2f, b[1], b[2], b[3], b[4], bc[0], bc[1], bc[2], 0f)
-                  }
+                  // Ammo bar
+                  drawRect2D(w * 0.03f, h * 0.085f, w * 0.3f * ammo / MAG_SIZE.toFloat(), h * 0.03f, 1f, 0.85f, 0.2f)
 
-                  // Player facing camera direction
-                  val rotDeg = Math.toDegrees(yaw.toDouble()).toFloat()
-                  drawBox(cube, px, 0.6f, pz, 0.8f, 1.2f, 0.6f, 0.2f, 0.4f, 0.9f, rotDeg)
-                  drawBox(cube, px, 1.5f, pz, 0.5f, 0.5f, 0.5f, 0.9f, 0.75f, 0.6f, rotDeg)
+                  // Move zone indicator
+                  drawRect2D(w * 0.05f, h * 0.7f, w * 0.15f, h * 0.22f, 0.3f, 0.4f, 0.3f)
 
-                  // Gun in front of the player
-                  drawBox(cube, px + fwdX * 0.9f, 1.0f, pz + fwdZ * 0.9f, 0.18f, 0.18f, 1.0f, 0.15f, 0.15f, 0.15f, rotDeg)
+                  // FIRE button
+                  drawRect2D(w * 0.6f, h * 0.7f, w * 0.15f, h * 0.22f, if (fire) 1f else 0.6f, if (fire) 0.3f else 0.15f, 0.15f)
+
+                  // ADS button
+                  drawRect2D(w * 0.85f, h * 0.7f, w * 0.12f, h * 0.22f, if (ads) 0.3f else 0.15f, if (ads) 0.5f else 0.25f, if (ads) 1f else 0.5f)
+
+                  GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+              }
+
+              private fun drawRect2D(x: Float, y: Float, rw: Float, rh: Float, r: Float, g: Float, b: Float) {
+                  Matrix.setIdentityM(model, 0)
+                  Matrix.translateM(model, 0, x + rw / 2f, y + rh / 2f, 0f)
+                  Matrix.scaleM(model, 0, rw, rh, 0.01f)
+                  Matrix.multiplyMM(mvp, 0, ortho, 0, model, 0)
+                  GLES20.glUniformMatrix4fv(uMVP, 1, false, mvp, 0)
+                  GLES20.glUniform3f(uColor, r, g, b)
+                  bindAndDraw(cube)
               }
 
               // ---------- helpers ----------
-              private fun blocked(x: Float, z: Float): Boolean {
+              private fun buildCity() {
+                  val rng = Random(7)
+                  var tries = 0
+                  while (buildings.size < 45 && tries < 800) {
+                      tries++
+                      val w = 6f + rng.nextFloat() * 8f
+                      val d = 6f + rng.nextFloat() * 8f
+                      val h = 8f + rng.nextFloat() * 22f
+                      val x = -WORLD + 10f + rng.nextFloat() * (2f * WORLD - 20f)
+                      val z = -WORLD + 10f + rng.nextFloat() * (2f * WORLD - 20f)
+                      if (abs(x) < 16f && abs(z) < 16f) continue
+                      var overlap = false
+                      for (b in buildings) {
+                          if (abs(x - b[0]) < (w + b[2]) / 2f + 3f && abs(z - b[1]) < (d + b[4]) / 2f + 3f) {
+                              overlap = true
+                              break
+                          }
+                      }
+                      if (!overlap) buildings.add(floatArrayOf(x, z, w, h, d))
+                  }
+              }
+
+              private fun blocked(x: Float, z: Float, r: Float): Boolean {
                   for (b in buildings) {
-                      if (abs(x - b[0]) < b[2] / 2f + 0.6f && abs(z - b[1]) < b[4] / 2f + 0.6f) return true
+                      if (abs(x - b[0]) < b[2] / 2f + r && abs(z - b[1]) < b[4] / 2f + r) return true
                   }
                   return false
               }
 
-              private fun drawBox(
+              // Draws a box: base position and yaw, then a local offset (rotated with the base), then size
+              private fun drawPart(
                   mesh: Mesh,
-                  tx: Float, ty: Float, tz: Float,
+                  bx: Float, by: Float, bz: Float, rotY: Float,
+                  lx: Float, ly: Float, lz: Float,
                   sx: Float, sy: Float, sz: Float,
-                  r: Float, g: Float, b: Float,
-                  rotYDeg: Float
+                  r: Float, g: Float, b: Float
               ) {
                   Matrix.setIdentityM(model, 0)
-                  Matrix.translateM(model, 0, tx, ty, tz)
-                  Matrix.rotateM(model, 0, rotYDeg, 0f, 1f, 0f)
+                  Matrix.translateM(model, 0, bx, by, bz)
+                  Matrix.rotateM(model, 0, rotY, 0f, 1f, 0f)
+                  Matrix.translateM(model, 0, lx, ly, lz)
                   Matrix.scaleM(model, 0, sx, sy, sz)
 
                   Matrix.multiplyMM(tmp, 0, view, 0, model, 0)
                   Matrix.multiplyMM(mvp, 0, proj, 0, tmp, 0)
-
                   GLES20.glUniformMatrix4fv(uMVP, 1, false, mvp, 0)
                   GLES20.glUniform3f(uColor, r, g, b)
+                  bindAndDraw(mesh)
+              }
 
+              private fun bindAndDraw(mesh: Mesh) {
                   GLES20.glEnableVertexAttribArray(aPos)
                   GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, 0, mesh.pos)
                   GLES20.glEnableVertexAttribArray(aNor)
                   GLES20.glVertexAttribPointer(aNor, 3, GLES20.GL_FLOAT, false, 0, mesh.nor)
-
                   GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, mesh.count)
               }
 
@@ -515,7 +748,7 @@ jobs:
                   return s
               }
 
-              // Unit cube centered at origin, size 1 (-0.5 .. 0.5)
+              // Unit cube centered at origin (-0.5 .. 0.5)
               private fun buildCube(): Mesh {
                   val normals = arrayOf(
                       floatArrayOf(1f, 0f, 0f), floatArrayOf(-1f, 0f, 0f),
@@ -577,7 +810,7 @@ jobs:
           }
           EOF
 
-          echo "[SUCCESS] 3D camera source files written."
+          echo "[SUCCESS] 3D zombies and full map source files written."
 
       - name: Build APK
         run: |
@@ -588,6 +821,6 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ZombieZ-3D-Camera-APK
+          name: ZombieZ-3D-Zombies-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
