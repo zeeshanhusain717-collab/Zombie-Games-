@@ -360,7 +360,7 @@ class GameLogic {
 // ===================== OPENGL DRAWING =====================
 class GameDraw : GLSurfaceView.Renderer {
 
-    private val logic = GameLogic()
+    val logic = GameLogic()
     private var lastTime = 0L
     private var timeAcc = 0f
 
@@ -593,7 +593,7 @@ class GameDraw : GLSurfaceView.Renderer {
 
         // Gun (फ़ीचर 6): moves toward centre in ADS
         val adsT = if (g.inAds) 1f else 0f
-        val flash = fireCd > FIRE_DELAY - 0.05f
+        val flash = g.fireCd > GameLogic.FIRE_DELAY - 0.05f
         drawGun(g, rot, adsT, flash)
 
         // Bullets
@@ -935,3 +935,4 @@ class GameDraw : GLSurfaceView.Renderer {
         return Mesh(pos, nor)
     }
 }
+
