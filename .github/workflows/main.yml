@@ -24,7 +24,7 @@ jobs:
         with:
           gradle-version: '8.2'
 
-      - name: Write 3D Test Source Files
+      - name: Write 3D Source Files
         run: |
           mkdir -p app/src/main/java/com/zombiez/game
 
@@ -79,8 +79,8 @@ jobs:
                   applicationId "com.zombiez.game"
                   minSdk 21
                   targetSdk 34
-                  versionCode 3
-                  versionName "3.0-test"
+                  versionCode 4
+                  versionName "3.1-camera"
               }
 
               buildTypes {
@@ -110,7 +110,7 @@ jobs:
 
               <application
                   android:allowBackup="true"
-                  android:label="Zombie Z 3D Test"
+                  android:label="Zombie Z 3D"
                   android:supportsRtl="true"
                   android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
 
@@ -165,11 +165,10 @@ jobs:
               }
 
               override fun onTouchEvent(event: MotionEvent): Boolean {
-                  val w = glView.width.toFloat()
                   when (event.actionMasked) {
                       MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                           val i = event.actionIndex
-                          renderer.touchDown(event.getPointerId(i), event.getX(i), event.getY(i), w)
+                          renderer.touchDown(event.getPointerId(i), event.getX(i), event.getY(i))
                       }
                       MotionEvent.ACTION_MOVE -> {
                           for (i in 0 until event.pointerCount) {
@@ -197,10 +196,7 @@ jobs:
           import java.nio.FloatBuffer
           import javax.microedition.khronos.egl.EGLConfig
           import javax.microedition.khronos.opengles.GL10
-          import kotlin.math.abs
-          import kotlin.math.cos
-          import kotlin.math.hypot
-          import kotlin.math.sin
+          import kotlin.math.*
 
           class Mesh(verts: FloatArray, normals: FloatArray) {
               val count: Int = verts.size / 3
@@ -265,7 +261,6 @@ jobs:
                   floatArrayOf(-10f, -55f, 8f, 10f, 8f)
               )
 
-              // Building color palette. Wave-based change will use this later.
               private val buildingColors = arrayOf(
                   floatArrayOf(0.55f, 0.45f, 0.35f),
                   floatArrayOf(0.45f, 0.5f, 0.6f),
@@ -273,31 +268,47 @@ jobs:
               )
               private var tint = 0
 
-              // Player state
+              // Player and camera state
               private var px = 0f
               private var pz = 0f
               private var yaw = 0f
+              private var pitch = 0.35f
               private val moveSpeed = 6f
+              private var camX = 0f
+              private var camY = 0f
+              private var camZ = 0f
+              private var camInit = false
+
+              // Screen size (updated on surface change)
+              @Volatile private var screenW = 1f
+              @Volatile private var screenH = 1f
+              private var aspect = 1f
 
               // Touch state (protected by lock)
               private val lock = Any()
-              private val touches = HashMap<Int, FloatArray>() // [side(0=move,1=look), originX, originY, lastX, lastY]
-              private var stickX = 0f
-              private var stickY = 0f
-              private var lookDelta = 0f
-              private var screenW = 1f
+              // touch values: [side (0=move, 1=look, 2=ads), originX, originY, lastX, lastY]
+              private val touches = HashMap<Int, FloatArray>()
+              private var moveX = 0f
+              private var moveY = 0f
+              private var lookDx = 0f
+              private var lookDy = 0f
 
               private var lastTime = 0L
 
               // ---------- touch API (called from UI thread) ----------
-              fun touchDown(id: Int, x: Float, y: Float, w: Float) {
+              fun touchDown(id: Int, x: Float, y: Float) {
                   synchronized(lock) {
-                      screenW = w
-                      val side = if (x < w / 2f) 0f else 1f
+                      val w = screenW
+                      val h = screenH
+                      val side = when {
+                          x < w / 2f -> 0f
+                          x > w * 0.7f && y > h * 0.55f -> 2f
+                          else -> 1f
+                      }
                       touches[id] = floatArrayOf(side, x, y, x, y)
                       if (side == 0f) {
-                          stickX = 0f
-                          stickY = 0f
+                          moveX = 0f
+                          moveY = 0f
                       }
                   }
               }
@@ -305,11 +316,15 @@ jobs:
               fun touchMove(id: Int, x: Float, y: Float) {
                   synchronized(lock) {
                       val t = touches[id] ?: return
-                      if (t[0] == 0f) {
-                          stickX = ((x - t[1]) / 120f).coerceIn(-1f, 1f)
-                          stickY = ((y - t[2]) / 120f).coerceIn(-1f, 1f)
-                      } else {
-                          lookDelta += x - t[3]
+                      when (t[0]) {
+                          0f -> {
+                              moveX = ((x - t[1]) / 120f).coerceIn(-1f, 1f)
+                              moveY = ((y - t[2]) / 120f).coerceIn(-1f, 1f)
+                          }
+                          1f -> {
+                              lookDx += x - t[3]
+                              lookDy += y - t[4]
+                          }
                       }
                       t[3] = x
                       t[4] = y
@@ -320,8 +335,8 @@ jobs:
                   synchronized(lock) {
                       val t = touches.remove(id) ?: return
                       if (t[0] == 0f) {
-                          stickX = 0f
-                          stickY = 0f
+                          moveX = 0f
+                          moveY = 0f
                       }
                   }
               }
@@ -329,8 +344,8 @@ jobs:
               fun touchCancel() {
                   synchronized(lock) {
                       touches.clear()
-                      stickX = 0f
-                      stickY = 0f
+                      moveX = 0f
+                      moveY = 0f
                   }
               }
 
@@ -354,12 +369,14 @@ jobs:
                   cube = buildCube()
                   plane = buildPlane()
                   lastTime = System.nanoTime()
+                  camInit = false
               }
 
               override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
                   GLES20.glViewport(0, 0, width, height)
-                  val aspect = width.toFloat() / height.toFloat()
-                  Matrix.perspectiveM(proj, 0, 60f, aspect, 0.1f, 300f)
+                  screenW = width.toFloat()
+                  screenH = height.toFloat()
+                  aspect = width.toFloat() / height.toFloat()
               }
 
               override fun onDrawFrame(gl: GL10?) {
@@ -369,61 +386,92 @@ jobs:
 
                   var sx = 0f
                   var sy = 0f
-                  var look = 0f
+                  var dxLook = 0f
+                  var dyLook = 0f
+                  var ads = false
                   synchronized(lock) {
-                      sx = stickX
-                      sy = stickY
-                      look = lookDelta
-                      lookDelta = 0f
+                      sx = moveX
+                      sy = moveY
+                      dxLook = lookDx
+                      dyLook = lookDy
+                      lookDx = 0f
+                      lookDy = 0f
+                      ads = touches.values.any { it[0] == 2f }
                   }
 
                   // Camera rotation from right-side drag
-                  yaw += look * 0.01f
+                  yaw += dxLook * 0.008f
+                  pitch = (pitch + dyLook * 0.004f).coerceIn(0.1f, 0.9f)
+
+                  // Direction vectors on the ground (XZ plane)
+                  val fwdX = sin(yaw)
+                  val fwdZ = cos(yaw)
+                  val rgtX = cos(yaw)
+                  val rgtZ = -sin(yaw)
 
                   // Movement relative to camera direction
                   if (hypot(sx, sy) > 0.12f) {
-                      val fx = sin(yaw)
-                      val fz = cos(yaw)
-                      val rx = cos(yaw)
-                      val rz = -sin(yaw)
-                      val forwardAmt = -sy
-                      val sideAmt = sx
-                      var dx = rx * sideAmt + fx * forwardAmt
-                      var dz = rz * sideAmt + fz * forwardAmt
-                      val len = hypot(dx, dz)
+                      var mx = rgtX * sx + fwdX * (-sy)
+                      var mz = rgtZ * sx + fwdZ * (-sy)
+                      val len = hypot(mx, mz)
                       if (len > 1f) {
-                          dx /= len
-                          dz /= len
+                          mx /= len
+                          mz /= len
                       }
-                      val step = moveSpeed * dt
-                      val nx = (px + dx * step).coerceIn(-90f, 90f)
+                      val speed = if (ads) 3.5f else moveSpeed
+                      val step = speed * dt
+                      val nx = (px + mx * step).coerceIn(-90f, 90f)
                       if (!blocked(nx, pz)) px = nx
-                      val nz = (pz + dz * step).coerceIn(-90f, 90f)
+                      val nz = (pz + mz * step).coerceIn(-90f, 90f)
                       if (!blocked(px, nz)) pz = nz
                   }
 
-                  // Third-person camera behind the player
-                  val camDist = 9f
-                  val camHeight = 4.5f
-                  val ex = px - sin(yaw) * camDist
-                  val ez = pz - cos(yaw) * camDist
-                  Matrix.setLookAtM(view, 0, ex, camHeight, ez, px, 1.2f, pz, 0f, 1f, 0f)
+                  // Third-person camera over the right shoulder, smooth follow
+                  val dist = if (ads) 4.5f else 9f
+                  val shoulder = if (ads) 0.9f else 1.6f
+                  val cosP = cos(pitch)
+                  val sinP = sin(pitch)
+                  val desX = px - fwdX * dist * cosP + rgtX * shoulder
+                  val desY = 1.2f + dist * sinP
+                  val desZ = pz - fwdZ * dist * cosP + rgtZ * shoulder
+
+                  if (!camInit) {
+                      camX = desX
+                      camY = desY
+                      camZ = desZ
+                      camInit = true
+                  }
+                  val k = 1f - exp(-dt * 12f)
+                  camX += (desX - camX) * k
+                  camY += (desY - camY) * k
+                  camZ += (desZ - camZ) * k
+
+                  val tgtX = px + fwdX * 5f + rgtX * shoulder * 0.6f
+                  val tgtZ = pz + fwdZ * 5f + rgtZ * shoulder * 0.6f
+                  Matrix.setLookAtM(view, 0, camX, camY, camZ, tgtX, 1.2f, tgtZ, 0f, 1f, 0f)
+
+                  val fovy = if (ads) 45f else 60f
+                  Matrix.perspectiveM(proj, 0, fovy, aspect, 0.1f, 300f)
 
                   GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
                   GLES20.glUseProgram(program)
 
                   // Ground
-                  drawBox(plane, 0f, 0f, 0f, 200f, 1f, 200f, 0.25f, 0.55f, 0.25f)
+                  drawBox(plane, 0f, 0f, 0f, 200f, 1f, 200f, 0.25f, 0.55f, 0.25f, 0f)
 
                   // Buildings
                   val bc = buildingColors[tint]
                   for (b in buildings) {
-                      drawBox(cube, b[0], b[3] / 2f, b[1], b[2], b[3], b[4], bc[0], bc[1], bc[2])
+                      drawBox(cube, b[0], b[3] / 2f, b[1], b[2], b[3], b[4], bc[0], bc[1], bc[2], 0f)
                   }
 
-                  // Player: body and head
-                  drawBox(cube, px, 0.6f, pz, 0.8f, 1.2f, 0.6f, 0.2f, 0.4f, 0.9f)
-                  drawBox(cube, px, 1.5f, pz, 0.5f, 0.5f, 0.5f, 0.9f, 0.75f, 0.6f)
+                  // Player facing camera direction
+                  val rotDeg = Math.toDegrees(yaw.toDouble()).toFloat()
+                  drawBox(cube, px, 0.6f, pz, 0.8f, 1.2f, 0.6f, 0.2f, 0.4f, 0.9f, rotDeg)
+                  drawBox(cube, px, 1.5f, pz, 0.5f, 0.5f, 0.5f, 0.9f, 0.75f, 0.6f, rotDeg)
+
+                  // Gun in front of the player
+                  drawBox(cube, px + fwdX * 0.9f, 1.0f, pz + fwdZ * 0.9f, 0.18f, 0.18f, 1.0f, 0.15f, 0.15f, 0.15f, rotDeg)
               }
 
               // ---------- helpers ----------
@@ -438,10 +486,12 @@ jobs:
                   mesh: Mesh,
                   tx: Float, ty: Float, tz: Float,
                   sx: Float, sy: Float, sz: Float,
-                  r: Float, g: Float, b: Float
+                  r: Float, g: Float, b: Float,
+                  rotYDeg: Float
               ) {
                   Matrix.setIdentityM(model, 0)
                   Matrix.translateM(model, 0, tx, ty, tz)
+                  Matrix.rotateM(model, 0, rotYDeg, 0f, 1f, 0f)
                   Matrix.scaleM(model, 0, sx, sy, sz)
 
                   Matrix.multiplyMM(tmp, 0, view, 0, model, 0)
@@ -527,7 +577,7 @@ jobs:
           }
           EOF
 
-          echo "[SUCCESS] 3D test source files written."
+          echo "[SUCCESS] 3D camera source files written."
 
       - name: Build APK
         run: |
@@ -538,6 +588,6 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ZombieZ-3D-Test-APK
+          name: ZombieZ-3D-Camera-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
